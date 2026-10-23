@@ -899,7 +899,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // need no more than that share - and still water as a whole)
         let fresnel = 0.02 + 0.98 * pow(1.0 - clamp(nv, 0.0, 1.0), 5.0);
         let pool = puddle * env_brdf(f0, rough, nv).g * select(wet_road, 1.0, pbr_reflects) * wet_share * aer.a;
-        let sheen = select(0.8 * wet_road, 1.0, is_water) * fresnel * aer.a;
+        let sheen = select(0.8 * smoothstep(0.55, 0.95, wet_road), 1.0, is_water) * fresnel * aer.a;
         let weight = clamp(max(pool, sheen), 0.0, 1.0);
         *puddle_weight = vec2<f32>(weight, weight * spec_occ);
     }

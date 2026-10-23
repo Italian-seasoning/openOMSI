@@ -117,6 +117,15 @@ fn lamp_airlight(c: vec3<f32>, d: vec3<f32>, start: f32, len: f32, jitter: f32, 
                 if (h >= range) {
                     continue;
                 }
+                // A beam (a headlamp, a spot) is lit in the weather's fog only: its cone is a sliver of
+                // sixteen jittered steps at half size, which the fog's density hides and the clear
+                // air's haze shows as shimmer and soap. The lamps' halo alone has the ground haze.
+                let beam_lamp = l.extra.z != 0.0 || l.dir.w > -1.5;
+                let fog_sigma = enh.fog.x * droplets;
+                if (beam_lamp && fog_sigma < 2e-4) {
+                    continue;
+                }
+                let s0 = select(sigma0, fog_sigma, beam_lamp);
                 var core = l.extra.y;
                 if (core <= 0.0) {
                     core = range * 0.125;
@@ -188,9 +197,9 @@ fn lamp_airlight(c: vec3<f32>, d: vec3<f32>, start: f32, len: f32, jitter: f32, 
                 // a lamp's irradiance is core^2 / r^2 of its colour's (a headlamp's 1 / r^2)
                 let strength = select(core * core, 1.0, l.extra.z != 0.0);
                 let xc = c + d * tc;
-                let sigma = sigma0 * exp(-enh.fog.y * max(xc.z - enh.fog.z, 0.0));
+                let sigma = s0 * exp(-enh.fog.y * max(xc.z - enh.fog.z, 0.0));
                 let dl = distance(xc, l.pos.xyz);
-                let atten = exp(-layer_depth(sigma0, enh.fog.y, c.z - enh.fog.z, xc.z - enh.fog.z, tc - start) - sigma * dl);
+                let atten = exp(-layer_depth(s0, enh.fog.y, c.z - enh.fog.z, xc.z - enh.fog.z, tc - start) - sigma * dl);
                 sum = sum + l.color.rgb * (l.color.w * strength * acc * half / hh * sigma * atten);
             }
         }
