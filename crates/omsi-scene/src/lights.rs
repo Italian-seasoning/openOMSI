@@ -618,6 +618,7 @@ fn push_enhanced_spot(lights: &mut Vec<PointLight>, at: DVec3, d: Vec3, level: V
         shadow_owner: None,
         mode: LightMode::Enhanced,
         cookie: None,
+        flash: false,
     });
 }
 
@@ -965,7 +966,7 @@ pub fn collect(
     // 13 ms of a 25 ms frame in a grey winter noon where the cars have their lights on; so
     // how many cars are lent beams, and how far, goes with how dark the scene is, the weather's
     // gloom included, see `cars_with_beams`)
-    let dark = night.max(cone.gloom);
+    let dark = if cone.enhanced { night.max(cone.gloom) } else { 1.0 };
     let beams = cars_with_beams(vehicles, camera_pos, dark);
     for (k, v) in vehicles.iter().enumerate() {
         vehicle_lights(v, &mut scene.coronas, &mut scene.lights, night, &world.cookie_fades, beams.contains(&k));
@@ -1251,11 +1252,12 @@ pub struct ConeWeather {
     /// How dark the weather alone makes the day (`gloom_darkness`): it does not change the
     /// cones, but counts in whether the scene is dark enough for the AI cars' beams.
     pub gloom: f32,
+    pub enhanced: bool,
 }
 
 impl ConeWeather {
     pub fn new(fog_visibility_m: f32, night: f32) -> ConeWeather {
-        ConeWeather { fog_visibility_m, night: night.clamp(0.0, 1.0), gloom: 0.0 }
+        ConeWeather { fog_visibility_m, night: night.clamp(0.0, 1.0), gloom: 0.0, enhanced: false }
     }
 
     /// [`ConeWeather::new`] for the weather `w`, whose clouds and rain darken the day.

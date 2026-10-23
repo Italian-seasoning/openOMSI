@@ -231,6 +231,7 @@ pub struct VehicleInstance {
     v_accel: [Option<omsi_script::VarId>; 3],
     v_wheels: Vec<[[Option<omsi_script::VarId>; 5]; 2]>,
     v_springfactor: Vec<[Option<omsi_script::VarId>; 2]>,
+    v_surface: Vec<[Option<omsi_script::VarId>; 2]>,
     /// The passengers' door variables, looked up on first use (see `pax_vars`); made
     /// again when the vehicle gains a variable.
     pax_vars: std::sync::OnceLock<PaxVars>,

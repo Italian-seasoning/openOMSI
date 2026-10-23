@@ -237,6 +237,8 @@ fn graphics_modes() {
     assert!(rt.enhanced && rt.ray_tracing() && rt.shadows && rt.ssao && rt.reflections == 1.0);
     assert_eq!(["1", "0", "true", "off", "0.35", "7", "x"].map(|v| Settings::from_text(&format!("reflections={v}\n")).reflections), [1.0, 0.0, 1.0, 0.0, 0.35, 1.0, 0.0]);
     assert!(rt.render_options().ray_tracing && !rt.render_options().no_enhanced);
+    let switched = crate::startup::SessionSettings { enhanced: true, ..Default::default() };
+    assert!(Settings::default().render_options().no_enhanced && !switched.render_options(&Settings::default()).no_enhanced);
     let s = Settings { graphics: "enhanced".into(), enhanced: true, ..Default::default() };
     assert_eq!(Settings::from_text(&s.to_text()), s);
 }

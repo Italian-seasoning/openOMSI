@@ -583,7 +583,7 @@ impl App {
                                 Some(false) => "Lowering the pantograph ...",
                                 None => "This vehicle has no pantograph switch",
                             };
-                            self.service_msg = Some((msg.to_string(), 4.0));
+                            self.service_msg = Some((omsi_ui::i18n::tr(msg).into_owned(), 4.0));
                         }
                     }
                 KeyCode::KeyR if shift_chord =>

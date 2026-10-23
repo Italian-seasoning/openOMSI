@@ -277,6 +277,11 @@ impl Vehicle {
         self.coupling_front.is_some() && !self.has_friendly_name
     }
 
+    /// The vehicle's mass in kg: a `[mass]` under 100 is tonnes (as every `.bus` of OMSI 2 has it).
+    pub fn mass_kg(&self) -> f32 {
+        if self.mass < 100.0 { self.mass * 1000.0 } else { self.mass }
+    }
+
     /// A rail vehicle: a car of a `.zug` runs on rails, which Omsi.exe stands end to end by
     /// their model bodies (its cars' declared coupling points need not be at the cars' ends).
     /// A road vehicle, a trailer or an articulated-bus rear section keeps its declared
@@ -285,11 +290,6 @@ impl Vehicle {
     /// Rails are what the file says they are: a `[boogies]`, a `[contact_shoe]` or a
     /// `[rail_body_osc]` (`rail_drive::is_rail` reads the same three; a rail car has all of
     /// a bogie, and Omsi.exe's `[type] 2` marks the same vehicles).
-    /// The vehicle's mass in kg: a `[mass]` under 100 is tonnes (as every `.bus` of OMSI 2 has it).
-    pub fn mass_kg(&self) -> f32 {
-        if self.mass < 100.0 { self.mass * 1000.0 } else { self.mass }
-    }
-
     pub fn is_rail(&self) -> bool {
         matches!(self.kind, VehicleKind::Other(2))
             || self.boogies.is_some()

@@ -745,7 +745,7 @@ impl RigidBody {
     /// This is why a bus understeers as it speeds up, turns in over a second at 90 km/h and
     /// not at once, lets its tail out when the rear tyres are overloaded, and why a braking
     /// wheel loses its hold across: none of it follows from OMSI's rule that the body follows
-    /// its wheels exactly until the grip is passed. `OMSI_CLASSIC_TYRES=1` gives that back.
+    /// its wheels exactly until the grip is passed. Realistic road physics off gives that back.
     fn slip_across(&mut self, contacts: &[Contact], longs: &[f32], mut force: Vec3, mut torque: Vec3, rot: Quat, h: f32) -> (Vec3, Vec3) {
         let inv = rot.inverse();
         let omega_world = rot.mul_vec3(self.omega);
