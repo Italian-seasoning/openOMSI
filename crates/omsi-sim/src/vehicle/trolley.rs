@@ -42,6 +42,8 @@ pub struct TrolleyGear {
     /// wire the hand was aimed at for this many seconds, as it does when the cab raises it.
     assist: Vec<f32>,
     names: Names,
+    /// The way the drive last pulled, read off the script's torque (see `step_trolley`).
+    last_dir: f32,
     /// The variables of the poles and of the gear as the model reads them: their slots, and
     /// the values of the step (kept to be written again, no allocation).
     var_ids: Vec<omsi_script::VarId>,
@@ -89,6 +91,7 @@ impl TrolleyGear {
             grab_was: None,
             assist: vec![0.0; def.poles.len()],
             names: Names { pole },
+            last_dir: 1.0,
             var_ids: Vec::new(),
             var_values: Vec::new(),
         }))
@@ -148,7 +151,23 @@ impl VehicleInstance {
         let (pos, m, _) = self.trolley_frame();
         let rot = glam::DMat3::from_cols(m.x_axis.truncate().as_dvec3(), m.y_axis.truncate().as_dvec3(), m.z_axis.truncate().as_dvec3());
         let def = self.trolley.as_ref().unwrap().def.clone();
-        let dir = self.var(&def.vars.direction).map_or(1.0, |d| if d > 0.5 { 1.0 } else if d < -0.5 { -1.0 } else { 0.0 });
+        // the way the drive pulls: the model's variable where it has one, else the way the
+        // script's own torque points while the pedal is down (reverse gear: negative), kept
+        // while the pedal is up
+        let dir = match self.var(&def.vars.direction) {
+            Some(d) => {
+                if d > 0.5 { 1.0 } else if d < -0.5 { -1.0 } else { 0.0 }
+            }
+            None => {
+                let torque = self.get(self.v_m_wheel);
+                let held = self.trolley.as_ref().map_or(1.0, |g| g.last_dir);
+                let now = if self.physics.controls.throttle > 0.05 && torque.abs() > 30.0 { torque.signum() } else { held };
+                if let Some(g) = self.trolley.as_mut() {
+                    g.last_dir = now;
+                }
+                now
+            }
+        };
         let blinker = {
             let l = self.var(&def.vars.indicator_left).is_some_and(|v| v > 0.5);
             let r = self.var(&def.vars.indicator_right).is_some_and(|v| v > 0.5);

@@ -125,6 +125,9 @@ pub struct AiState {
     /// At most this speed for now (m/s): rolling aside at walking pace for an emergency
     /// vehicle, or one crossing against a red light on the junction kept for it.
     pub speed_cap: Option<f32>,
+    /// A rail vehicle's traction as power over mass (W/kg): its acceleration falls with speed as
+    /// `P / (m v)` once the starting effort is no longer what limits it. None for a road vehicle.
+    pub rail_power: Option<f32>,
     pub bend: BendCache,
 }
 
@@ -379,7 +382,7 @@ const TRAP_DEPTH: u32 = 3;
 
 impl AiState {
     pub fn new(lane: usize, s: f32, seed: u64) -> AiState {
-        AiState { traffic_pool: None, veh_type: 0, lane, s, speed: 0.0, max_speed_kmh: 50.0, accel: 1.2, decel: 3.0, length: 5.0, rng: seed | 1, blinker: 0, braking: false, brake_lamp: 0.0, odometer: 0.0, planned_next: None, ahead: Vec::new(), change_plan: Vec::new(), prev_lane: None, yield_time: 0.0, route: Vec::new(), route_index: 0, change: None, change_cooldown: 5.0, lateral: 0.0, lateral_target: 0.0, lateral_ramp: (0.0, 0.0, 0.0, 1.0), turn_wish: 0, signal: 0, signal_time: 0.0, lat_accel: 2.8, desire: 1.0, headway: 1.4, min_gap: 2.0, accept_gap: 4.0, reaction: 0.7, front: 2.5, rear: 2.5, held: false, start_timer: 0.0, acc: 0.0, accel_cap: None, ordinary_brake: ORDINARY_BRAKE, emergency_brake: MAX_BRAKE, jerk: JERK, cmd: 0.0, emergency: false, emergency_began: false, body: BodyLink::default(), nudge_ramp: (0.0, 0.0, 0.0, 1.0), priority_drive: false, speed_cap: None, bend: BendCache::default() }
+        AiState { traffic_pool: None, veh_type: 0, lane, s, speed: 0.0, max_speed_kmh: 50.0, accel: 1.2, decel: 3.0, length: 5.0, rng: seed | 1, blinker: 0, braking: false, brake_lamp: 0.0, odometer: 0.0, planned_next: None, ahead: Vec::new(), change_plan: Vec::new(), prev_lane: None, yield_time: 0.0, route: Vec::new(), route_index: 0, change: None, change_cooldown: 5.0, lateral: 0.0, lateral_target: 0.0, lateral_ramp: (0.0, 0.0, 0.0, 1.0), turn_wish: 0, signal: 0, signal_time: 0.0, lat_accel: 2.8, desire: 1.0, headway: 1.4, min_gap: 2.0, accept_gap: 4.0, reaction: 0.7, front: 2.5, rear: 2.5, held: false, start_timer: 0.0, acc: 0.0, accel_cap: None, ordinary_brake: ORDINARY_BRAKE, emergency_brake: MAX_BRAKE, jerk: JERK, cmd: 0.0, emergency: false, emergency_began: false, body: BodyLink::default(), nudge_ramp: (0.0, 0.0, 0.0, 1.0), priority_drive: false, speed_cap: None, rail_power: None, bend: BendCache::default() }
     }
 
     fn rand(&mut self) -> u64 {
@@ -878,6 +881,11 @@ impl AiState {
         // (an emergency vehicle on its drive pulls away hard)
         let (a, b) = (self.accel.max(0.1) * if self.priority_drive { 1.6 } else { 1.0 }, self.decel.max(0.5));
         let v = self.speed;
+        // a rail vehicle's pull falls with speed at constant power (and its adhesion with it)
+        let a = match self.rail_power {
+            Some(p) => a.min((p / v.max(1.0)).max(0.08)),
+            None => a,
+        };
         let limit = |l: &Lane| {
             // (the bonus is the driver's whole margin: his own liking for speed on top of it
             // would take him past it)

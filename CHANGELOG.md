@@ -8,6 +8,30 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
+  wire and no further (the head's travel is measured on the model's own meshes and animations;
+  the script's variable is left alone, only the animation is shown the travel at which the head
+  is on the wire), presses it with its static force, and brings current only while it lies on a
+  live wire - a wire it cannot reach, or a lowered pantograph, gives no drive in either
+  direction. The wire is the standard height of the class over the rails (kept within the
+  pantograph's reach), staggered across the track, harder at forks and rougher in the wet and the
+  frost. Where the wire is uneven at speed the head leaves it: a break under current strikes an
+  arc (`L I^2 / 2`, or the line voltage over a few milliseconds), drawn as sparks and a flash;
+  lowering under load does the same, and a loaded strip throws a few small sparks.
+  `Panto_Height`, `Panto_Contact`, `Panto_Force`, `Panto_Arc`, `Panto_Powered` are written for
+  models and sounds.
+- **Rail bodies ride on their springs**: a tram's or train's body is no longer nailed to the line
+  between its bogies. Heave, pitch and roll on the secondary suspension answer the lateral
+  acceleration of a bend (leaning out of it; a railway's cant takes most of a gentle one),
+  the traction and the brake (nose up, nose down) and the unevenness of the left and right rail
+  at each bogie, with damping, so a disturbance dies away. `rail_body_roll`, `rail_body_pitch`,
+  `rail_body_heave`, `rail_accel_side` and `rail_accel_vert` are written for scripts.
+- **AI trams and trains** accelerate as their class does (the pull falls with speed at constant
+  power), brake with the class's service brake and keep a driver's jerk.
+- **Trolleybuses drive on modelled electrics**: a trolleybus without its own `[trolley_*]` drive gets
+  a typical one for its mass (a rheostat controller, an inverter where its description says so),
+  and its direction is read off the way its script's torque points.
+
 - **LAN protocol 15**: a game of this version cannot join a session of an older one, nor the
   other way round (the AI traffic goes as a table, see below). Update the game on both sides.
 - **Every light casts a shadow** (Enhanced and Enhanced+): the lamps' shadow maps were four, now

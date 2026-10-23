@@ -236,6 +236,24 @@ pub struct LegacyDef {
     pub mesh_defs: Vec<usize>,
 }
 
+impl DriveKind {
+    /// The drive a trolleybus of `mass` kg (loaded) has when its file says nothing: a rheostat
+    /// controller (ZiU style), or an inverter drive where the model's description names a
+    /// chopper or asynchronous control. The ratings follow the mass as the buses' do - 13 t
+    /// has a 110 kW motor, 310 A, 1.4 m/s² off the line - so a short bus is not overpowered
+    /// and an articulated one has the force to start.
+    pub fn typical(mass: f32, chopper: bool) -> DriveKind {
+        let k = (mass / 13_000.0).clamp(0.5, 2.2);
+        if chopper {
+            let a = AsyncDef::default();
+            DriveKind::Async(AsyncDef { max_force: a.max_force * k, max_power_kw: a.max_power_kw * k, regen_power_kw: a.regen_power_kw * k, regen_force: a.regen_force * k, brake_force: a.brake_force * k, ..a })
+        } else {
+            let r = RheostatDef::default();
+            DriveKind::Rheostat(RheostatDef { current_min: r.current_min * k, current_max: r.current_max * k, brake_current: r.brake_current * k, brake_force: r.brake_force * k, ..r })
+        }
+    }
+}
+
 impl TrolleyDef {
     pub fn is_empty(&self) -> bool {
         self.poles.is_empty()
