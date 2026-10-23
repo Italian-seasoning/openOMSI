@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
-use crate::{data_dir, get_settings, graphics_mode, save_settings, GRAPHICS_PROFILE_KEYS};
+use crate::{data_dir, effective_mode, get_settings, save_settings, GRAPHICS_PROFILE_KEYS};
 
 const AUTO_MOST: u32 = 100;
 const SETTLE_S: f32 = 2.0;
@@ -105,7 +105,7 @@ fn scale(s: &Value) -> f64 {
 }
 
 pub fn lighter_steps(s: &Value, limit: Limit, m: &Machine) -> Vec<Step> {
-    let mode = graphics_mode(text(s, "graphics", "vanilla_plus"));
+    let mode = effective_mode(s);
     let classic = mode == "vanilla";
     let traced = mode == "enhanced_plus";
     let enhanced = traced || mode == "enhanced";
@@ -155,7 +155,7 @@ pub fn lighter_steps(s: &Value, limit: Limit, m: &Machine) -> Vec<Step> {
 }
 
 pub fn heavier_steps(s: &Value, start: &Value, m: &Machine) -> Vec<Step> {
-    let mode = graphics_mode(text(s, "graphics", "vanilla_plus"));
+    let mode = effective_mode(s);
     let classic = mode == "vanilla";
     let traced = mode == "enhanced_plus";
     let lit = !classic && !traced;
