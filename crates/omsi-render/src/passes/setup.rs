@@ -131,8 +131,9 @@ impl Renderer {
             cam_rel,
             view_proj: projection.is_none().then(|| camera.view_proj(aspect, ro)),
             vehicle: lighting.inside.as_ref().map(|b| (b, lighting.inside_rotation)),
+            level: self.options.light_shadows,
         };
-        let (grid, lamp_shadows) = self.prepare_lights(scene, &eye, enhanced_frame, lighting.lamp_shadows && with_overlays && projection.is_none() && self.shadows.shadow_pipelines.len() > 6);
+        let (grid, lamp_shadows) = self.prepare_lights(scene, &eye, enhanced_frame, lighting.lamp_shadows && self.options.light_shadows > 0 && with_overlays && projection.is_none() && self.shadows.shadow_pipelines.len() > 6);
         self.prepare_coronas(scene, lighting.night, lighting.inside.as_ref().filter(|v| point_in_vehicle_box(camera.position, v)));
         // (the mirrors draw no smoke, see `encode_main_late`)
         if exclude_texture.is_none() {

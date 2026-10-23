@@ -578,6 +578,7 @@ impl Renderer {
             },
             sky: SkyRes {
                 sky_lut: enhanced.sky_lut,
+                cloud_field: FieldState::default(),
                 sky_lut_view: enhanced.sky_lut_view,
                 sky_state: None,
                 city_glow: None,

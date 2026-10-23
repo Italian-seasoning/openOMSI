@@ -58,12 +58,20 @@ fn fog_phase(c: f32) -> f32 {
 }
 const AIRLIGHT_CELLS: u32 = 16u;
 
-fn lamp_airlight(c: vec3<f32>, d: vec3<f32>, start: f32, len: f32, jitter: f32) -> vec3<f32> {
+// The clear night air's own haze, which lights a lamp's halo and a headlamp's beam as the fog's
+// droplets do, only fainter: the lowest hundred metres of a city's air hold its dust, exhaust
+// and humidity at several times the column's average aerosol extinction (`enh.fog.w`), 1-3e-4
+// per metre (a visibility of 15-40 km). A lamp then has a soft glow round it and a low beam
+// a faint cone, as in any night photograph, instead of a lit disc on a black ground.
+const GROUND_HAZE_GAIN: f32 = 8.0;
+
+// `droplets`: how much of the weather's extinction scatters like fog (see `FogLampUniform`).
+fn lamp_airlight(c: vec3<f32>, d: vec3<f32>, start: f32, len: f32, jitter: f32, droplets: f32) -> vec3<f32> {
     var sum = vec3<f32>(0.0);
-    let sigma0 = enh.fog.x;
+    let sigma0 = enh.fog.x * droplets + enh.fog.w * GROUND_HAZE_GAIN * enh.led.z;
     let cell = camera.light_grid.z;
     let side = u32(camera.light_grid.w);
-    if (sigma0 < 2e-4 || cell <= 0.0 || side == 0u || len <= start) {
+    if (sigma0 < 4e-5 || cell <= 0.0 || side == 0u || len <= start) {
         return sum;
     }
     // (past a few optical depths nothing comes back)

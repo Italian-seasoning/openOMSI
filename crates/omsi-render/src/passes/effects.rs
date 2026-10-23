@@ -41,7 +41,9 @@ impl Renderer {
     pub(crate) fn encode_fog_lamps(&self, encoder: &mut wgpu::CommandEncoder, scene: &Scene, f: &FrameCtx, vp_mat: Mat4, puddles_on: bool, timers: &mut PassTimers) {
         let (width, height, lighting) = (f.width, f.height, f.lighting);
         let (enhanced, prepass_on, with_overlays, masked_frame) = (f.enhanced, f.prepass_on, f.with_overlays, f.masked_frame);
-        let fog_lamps = enhanced_weather_fog(lighting) >= 2e-4 && !scene.lights.is_empty();
+        // (and in clear air too, at dusk and by night: the lamps' halos in the ground haze,
+        // `GROUND_HAZE_GAIN` in lamp_air.wgsl)
+        let fog_lamps = (enhanced_weather_fog(lighting) >= 2e-4 || (self.options.light_glow && lighting.sun_dir.z < 0.25)) && !scene.lights.is_empty();
         let shafts = lighting.shadows && lighting.sun_dir.z > 0.0 && self.shafts_seen(vp_mat, lighting.sun_dir);
         // (the glare goes by how much of the sun is seen, which is none with the sun behind
         // the camera - fog_lamps.wgsl `sun_seen`: then there is no glare to add)

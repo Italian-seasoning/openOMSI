@@ -237,7 +237,7 @@ pub(crate) struct LampAtlas {
 impl LampAtlas {
     /// The layout for a far map `shadow_size` texels wide, in a texture of `max_dim` texels a
     /// side at most. The tiles are an eighth of the far map's width (so that eight lie in a row and
-    /// the forty-four of them take six rows: the texture is 1.75 times as high as wide, not 7.5
+    /// the fifty-six of them take seven rows: the texture is 1.875 times as high as wide, not 9
     /// times, which 512-texel tiles made of it at 2048), at most `LAMP_TILE_MAX`; where the
     /// texture would be too high they are made smaller, down to 64 texels, and left out when
     /// even those do not fit. `lamps` false - the plain pictures, which do not look the lamps'
@@ -293,6 +293,9 @@ pub(crate) struct LampShadow {
     /// road (level, unit) instead of down; and the player's vehicle, whose own parts cast
     /// nothing into the player's headlamps' map.
     pub(crate) look: Option<Vec3>,
+    /// A spot light that is no vehicle's headlamp - a floodlight, a lamp aimed at a facade or a
+    /// door: its map looks along this direction (unit) over `fov`, not down.
+    pub(crate) aim: Option<Vec3>,
     pub(crate) own: Option<passes::VehicleBox>,
     /// The lamps of another vehicle: the parts of a vehicle the lamps stand in cast
     /// nothing into the map.
@@ -336,7 +339,7 @@ impl LampShadow {
     /// A light with no tile description yet but the slot: the rest to be filled in by the one
     /// that makes it (a world lamp looks straight down, 0.1 m to its reach).
     pub(crate) fn new(slot: usize) -> LampShadow {
-        LampShadow { slot, position: Vec3::ZERO, range: 0.0, owner: None, look: None, own: None, hosts: false, near: 0.1, fov: LAMP_SHADOW_FOV, cabin: None, index: 0 }
+        LampShadow { slot, position: Vec3::ZERO, range: 0.0, owner: None, look: None, aim: None, own: None, hosts: false, near: 0.1, fov: LAMP_SHADOW_FOV, cabin: None, index: 0 }
     }
 
     /// A sphere (centre, radius) that holds the reach of all of `lamps`; `None` for none.
@@ -360,12 +363,21 @@ impl LampShadow {
         self.key_matrix()
     }
 
+    /// A spot light's map: along its axis over its cone, depth 0..1 over its reach.
+    fn aim_matrix(&self, aim: Vec3) -> Mat4 {
+        let up = if aim.z.abs() > 0.98 { Vec3::Y } else { Vec3::Z };
+        Mat4::perspective_rh(self.fov.to_radians(), 1.0, self.near, self.range.max(1.0)) * Mat4::look_to_rh(self.position, aim, up)
+    }
+
     /// What the tile's content is judged by: the matrix itself, but for a saloon lamp's
     /// tile the one in the vehicle's frame, which does not change as the vehicle moves.
     pub(crate) fn key_matrix(&self) -> Mat4 {
         if let Some(c) = &self.cabin {
             let proj = Mat4::perspective_rh(self.fov.to_radians(), 1.0, self.near, self.range.max(1.0));
             return proj * Mat4::look_to_rh(c.lamp, -Vec3::Z, Vec3::Y);
+        }
+        if let Some(aim) = self.aim {
+            return self.aim_matrix(aim);
         }
         if let Some(look) = self.look {
             return self.headlamp_view_proj(look);
@@ -905,20 +917,20 @@ pub(crate) struct LightRes {
 mod atlas_tests {
     use super::*;
 
-    /// The tiles are an eighth of the far map's width, forty-four of them in six rows, and take
-    /// no more of the texture than 1.75 times the far map's width in all.
+    /// The tiles are an eighth of the far map's width, fifty-six of them in seven rows, and take
+    /// no more of the texture than 1.875 times the far map's width in all.
     #[test]
-    fn the_lamp_tiles_take_six_rows_of_an_eighth() {
+    fn the_lamp_tiles_take_seven_rows_of_an_eighth() {
         for (size, tile) in [(1024, 128), (2048, 256), (4096, 512), (8192, 512)] {
             let a = LampAtlas::new(size, true, 16384);
             assert_eq!((a.tile, a.cols), (tile, size / tile), "{size}");
-            assert_eq!(a.rows, if size == 8192 { 3 } else { 6 }, "{size}");
+            assert_eq!(a.rows, if size == 8192 { 4 } else { 7 }, "{size}");
             let last = a.origin(LAMP_SHADOWS - 1);
             assert!(last.0 + a.tile <= size && last.1 + a.tile <= a.height(), "{size}: the last tile lies in the texture");
         }
         let a = LampAtlas::new(2048, true, 16384);
-        assert_eq!(a.height(), 2048 + 6 * 256);
-        assert_eq!(a.uniform(), [256.0, 8.0, 3584.0, LAMP_SHADOWS as f32]);
+        assert_eq!(a.height(), 2048 + 7 * 256);
+        assert_eq!(a.uniform(), [256.0, 8.0, 3840.0, LAMP_SHADOWS as f32]);
     }
 
     /// Vanilla and Vanilla+ have no tiles (the far map keeps its own height), a texture too low
