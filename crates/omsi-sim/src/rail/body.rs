@@ -136,6 +136,7 @@ impl Body {
         let (wz, wt, wr) = (6.2832 * p.heave_hz, 6.2832 * p.pitch_hz, 6.2832 * p.roll_hz);
         let zeta = p.damping;
         let sgn = if speed >= 0.0 { 1.0 } else { -1.0 };
+        let mut a_vert = 0.0;
         for _ in 0..sub {
             self.s += (speed * h) as f64;
             let half = p.bogie_span as f64 * 0.5 * sgn as f64;
@@ -151,6 +152,7 @@ impl Body {
             self.u_prev = Some(u);
             // heave: base excitation through spring and damper
             let az = -2.0 * zeta * wz * (self.zv - du[0]) - wz * wz * (self.z - u[0]);
+            a_vert = az;
             // pitch: the same, and the moment of the acceleration about the springs' plane
             // (static: theta = a h / (r^2 w^2), nose up under traction)
             let m_pitch = a_long * p.h_cg / (p.r_pitch * p.r_pitch);
@@ -166,8 +168,9 @@ impl Body {
             self.phv += aph * h;
             self.ph += self.phv * h;
         }
-        // what is felt: the body's own accelerations plus the lean's share of the g
-        let a_vert = -2.0 * zeta * wz * self.zv - wz * wz * self.z;
+        // what is felt: the body's integrated vertical acceleration (the springs act on the
+        // body's motion relative to the rails, base excitation included) plus the lean's share
+        // of the g
         self.out = BodyOut {
             heave: self.z,
             pitch_deg: self.th.to_degrees(),
@@ -259,6 +262,22 @@ mod tests {
             last = c.step(&p, 0.01, 12.0, 0.0, 0.0);
         }
         assert_eq!(last, b.out);
+    }
+
+    #[test]
+    fn a_stationary_car_on_uneven_track_feels_no_vertical_acceleration() {
+        let p = tram();
+        let mut b = Body::new(3);
+        // run to a point where the rails are uneven, then stand
+        for _ in 0..300 {
+            b.step(&p, 0.01, 12.0, 0.0, 0.0);
+        }
+        let mut out = BodyOut::default();
+        for _ in 0..4000 {
+            out = b.step(&p, 0.01, 0.0, 0.0, 0.0);
+        }
+        assert!(out.heave.abs() > 1e-4, "the rails here are uneven: {}", out.heave);
+        assert!(out.a_vert.abs() < 1e-3, "settled on its springs: {}", out.a_vert);
     }
 
     #[test]
