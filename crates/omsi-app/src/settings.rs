@@ -739,8 +739,7 @@ impl Settings {
                 "clouds" => s.clouds = b(v),
                 "cloud_quality" => s.cloud_quality = cloud_quality(v).into(),
                 "street_light" => s.street_light = street_light(v).into(),
-                "ray_tracing" | "rt" => s.ray_tracing_on = b(v), "light_shadows" => s.light_shadows = light_shadows(v).into(),
-                "cloud_shadows" => s.cloud_shadows = b(v), "light_glow" => s.light_glow = b(v),
+                "ray_tracing" | "rt" | "light_shadows" | "cloud_shadows" | "light_glow" => s.set_light_option(k.as_str(), v),
                 "rain_quality" => s.rain_quality = rain_quality(v).into(),
                 "vehicle_smoke" => s.vehicle_smoke = omsi_launcher_lib::vehicle_smoke(v).into(),
                 "puddles" => s.puddles = omsi_launcher_lib::puddles(v).into(),
@@ -893,6 +892,18 @@ impl Settings {
         }
         s.settle_after_reading(graphics, version);
         s
+    }
+
+    /// One of Enhanced's light options as a settings file says it (`ray_tracing`, `light_shadows`,
+    /// `cloud_shadows`, `light_glow`).
+    fn set_light_option(&mut self, key: &str, v: &str) {
+        let on = matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes");
+        match key {
+            "ray_tracing" | "rt" => self.ray_tracing_on = on,
+            "light_shadows" => self.light_shadows = light_shadows(v).into(),
+            "cloud_shadows" => self.cloud_shadows = on,
+            _ => self.light_glow = on,
+        }
     }
 
     fn settle_after_reading(&mut self, graphics: Option<String>, version: u32) {
