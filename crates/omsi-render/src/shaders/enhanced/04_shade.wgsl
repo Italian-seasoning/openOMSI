@@ -55,7 +55,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // one and stays.
     let pic_lod = led_lod(duv, vec2<f32>(textureDimensions(t_diffuse)));
     let led_pic = material.emissive.w < -1.5 && enh.led.y < pic_lod;
-    var tex = diffuse_border(textureSample(t_diffuse, s_diffuse, duv), duv);
+    var tex = diffuse_border(textureSampleBias(t_diffuse, s_diffuse, duv, camera.lod.x), duv);
     if (is_snow_pane()) {
         tex = snow_on_pane(in, film_water);
     }
@@ -64,7 +64,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     }
     let diffuse_a = tex.a;
     if (terrain && material.extra.y > 0.0) {
-        let det = textureSample(t_light, s_diffuse, in.uv * material.extra.y);
+        let det = textureSampleBias(t_light, s_diffuse, in.uv * material.extra.y, camera.lod.x);
         tex = vec4<f32>(clamp(tex.rgb * det.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), tex.a);
     }
     if (material.params.z > 0.5) {
@@ -177,8 +177,12 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // panes on the reflection/transmission path after the material-depth repair.
     // Painted terrain also blends a transmap without writing depth. It is never glass:
     // Fresnel opacity on its empty mask pixels darkens every lower layer at grazing angles.
+    // A script's screen is never a pane, though it is laid out as one - blended, not writing
+    // depth, its letters a `\S:n` transparency map: the EMT Citaro's Krueger matrix
+    // (Mallorca) was taken for glass, which gives no light of its own, and its letters stayed
+    // grey at night while its light map lit them in Vanilla+ (#2927).
     let glass = !terrain && mode > 1.5 && (material.bump.z > 0.5 || material.emissive.w > 0.5) &&
-        (has_env || material.params.z > 0.5 || material.emissive.w > 0.5);
+        (has_env || material.params.z > 0.5 || material.emissive.w > 0.5) && material.flags.x < 0.5;
     // An envmap on opaque vehicle paint is legacy material data, not a request to make
     // the whole body behave like glass. Keep the diffuse/sun response, but use the
     // ordinary rough dielectric path for the body.
@@ -344,7 +348,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // gives the occlusion, roughness and metalness in place of the guesses above
     var pbr_ao = 1.0;
     if (material.pbr.x > 0.5 && !terrain) {
-        var tn = textureSample(t_pbr_normal, s_diffuse, duv).xyz * 2.0 - vec3<f32>(1.0);
+        var tn = textureSampleBias(t_pbr_normal, s_diffuse, duv, camera.lod.x).xyz * 2.0 - vec3<f32>(1.0);
         // (an OpenGL-style map, green up: `_gl` in its name)
         if (material.pbr.x > 1.5) {
             tn.y = -tn.y;
@@ -352,7 +356,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         n = perturb_normal(n, in.world, duv, tn);
     }
     if (material.pbr.y + material.pbr.z + material.pbr.w > 0.5 && !terrain) {
-        let orm = textureSample(t_pbr_orm, s_diffuse, duv).rgb;
+        let orm = textureSampleBias(t_pbr_orm, s_diffuse, duv, camera.lod.x).rgb;
         if (material.pbr.y > 0.5) {
             pbr_ao = orm.r;
         }
@@ -774,7 +778,7 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // night, and less where the saloon lamps light the surface already. (As an emission
         // at 0.6 of the texture by day and on top of the lamps at night, a switched-on
         // cabin's light-mapped parts were flat white.)
-        let lm = textureSample(t_light, s_diffuse, buv).rgb * clamp(in.params2.x, 0.0, 1.0);
+        let lm = textureSampleBias(t_light, s_diffuse, buv, camera.lod.x).rgb * clamp(in.params2.x, 0.0, 1.0);
         if (material.emissive.w < -1.5) {
             let night = clamp(camera.sun_color.w, 0.0, 1.0);
             let left = (vec3<f32>(1.0) - clamp(cabin_light, vec3<f32>(0.0), vec3<f32>(1.0))) * (0.12 + 0.88 * night);
