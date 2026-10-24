@@ -45,6 +45,98 @@ impl Default for Axle {
     }
 }
 
+/// How an axle's strut works (an openOMSI extension; OMSI 2 knows one kind, the coil spring with
+/// a damper, which is what an axle without a `[suspension]` block gets).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SuspensionKind {
+    /// A steel coil spring and a hydraulic damper (OMSI 2's strut).
+    #[default]
+    Coil,
+    /// Leaf springs: the spring stiffens as it is loaded and the leaves rub on each other, which
+    /// adds dry friction to the damping.
+    Leaf,
+    /// Air bellows with a levelling valve: the ride height is held whatever the load, the bellows
+    /// stiffen as they are compressed.
+    Air,
+    /// A coil spring that stiffens as it is compressed.
+    Progressive,
+}
+
+impl SuspensionKind {
+    pub fn from_name(s: &str) -> Option<SuspensionKind> {
+        Some(match s.trim().to_ascii_lowercase().as_str() {
+            "coil" | "spring" | "steel" => SuspensionKind::Coil,
+            "leaf" | "leaf_spring" | "ressort" => SuspensionKind::Leaf,
+            "air" | "airbag" | "bellows" | "pneumatic" => SuspensionKind::Air,
+            "progressive" => SuspensionKind::Progressive,
+            _ => return None,
+        })
+    }
+}
+
+/// `[suspension]`: the strut of one axle (or of all, without `axle`).
+///
+/// ```text
+/// [suspension]
+/// axle 1               // index in the order of the [newachse] blocks; left out: every axle
+/// type leaf            // coil | leaf | air | progressive
+/// friction 2500        // N, dry friction of the leaves (leaf)
+/// progression 0.8      // how much stiffer at 10 cm of compression (leaf, progressive, air)
+/// level_time 4         // s, the levelling valve's time constant (air)
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Suspension {
+    pub axle: Option<usize>,
+    pub kind: SuspensionKind,
+    pub friction: f32,
+    pub progression: f32,
+    pub level_time: f32,
+}
+
+impl Suspension {
+    /// Reads the `key value` lines of the block.
+    pub fn parse(lines: &[&str]) -> Suspension {
+        let mut s = Suspension { axle: None, kind: SuspensionKind::Coil, friction: 0.0, progression: 0.0, level_time: 4.0 };
+        let mut explicit_progression = false;
+        for l in lines {
+            let l = l.split("//").next().unwrap_or("").trim();
+            let Some((k, v)) = l.split_once(char::is_whitespace) else { continue };
+            let (k, v) = (k.to_ascii_lowercase(), v.trim());
+            let num = || v.split_whitespace().next().and_then(|w| w.replace(',', ".").parse::<f32>().ok());
+            match k.as_str() {
+                "axle" => s.axle = v.parse().ok(),
+                "type" | "kind" => s.kind = SuspensionKind::from_name(v).unwrap_or_default(),
+                "friction" => s.friction = num().unwrap_or(0.0).max(0.0),
+                "progression" => {
+                    s.progression = num().unwrap_or(0.0).max(0.0);
+                    explicit_progression = true;
+                }
+                "level_time" => s.level_time = num().unwrap_or(4.0).clamp(0.2, 120.0),
+                _ => {}
+            }
+        }
+        // (typical values when the block gives none)
+        if !explicit_progression {
+            s.progression = match s.kind {
+                SuspensionKind::Leaf => 0.8,
+                SuspensionKind::Air => 0.35,
+                SuspensionKind::Progressive => 0.5,
+                SuspensionKind::Coil => 0.0,
+            };
+        }
+        if s.kind == SuspensionKind::Leaf && s.friction == 0.0 {
+            s.friction = 1500.0;
+        }
+        s
+    }
+
+    /// The strut of axle `index` among `list`: the last block that names it, else the last that
+    /// names none.
+    pub fn for_axle(list: &[Suspension], index: usize) -> Option<Suspension> {
+        list.iter().rev().find(|s| s.axle == Some(index)).or_else(|| list.iter().rev().find(|s| s.axle.is_none())).copied()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Attachment {
     pub ops: Vec<(String, Vec<f32>)>,
@@ -120,6 +212,8 @@ pub struct Vehicle {
     pub inv_min_turn_radius: f32,
     pub ai_delta_height: f32,
     pub axles: Vec<Axle>,
+    /// `[suspension]` blocks (openOMSI): the kind of strut per axle.
+    pub suspensions: Vec<Suspension>,
     pub attachments: Vec<Attachment>,
     pub coupling_front: Option<Coupling>,
     pub coupling_back: Option<Coupling>,
@@ -467,6 +561,10 @@ impl Vehicle {
                 "contact_shoe" => v.contact_shoes.push(r.f32s::<6>()),
                 "ai_brakeperformance" => v.ai_brake_performance = Some(r.f32s::<5>()),
                 "fixed" => v.fixed = true,
+                "suspension" => {
+                    let lines = r.rest_of_block();
+                    v.suspensions.push(Suspension::parse(&lines));
+                }
                 k2 if omsi_trolley::TrolleyDef::keywords().contains(&k2) => {
                     let lines = r.rest_of_block();
                     v.trolley.take_block(k2, &lines);
@@ -687,6 +785,18 @@ impl Vehicle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn suspension_blocks_pick_the_strut_of_each_axle() {
+        let v = Vehicle::parse(&CfgFile::from_str("x.bus", "[mass]\n10\n[suspension]\ntype air\nlevel_time 6\n[suspension]\naxle 1\ntype leaf // rear\nfriction 3000\n[boundingbox]\n2.5\n11\n3.7\n0\n0\n2\n"));
+        assert_eq!(v.suspensions.len(), 2);
+        assert!(v.bounding_box.is_some(), "the block does not swallow its neighbour");
+        let front = Suspension::for_axle(&v.suspensions, 0).unwrap();
+        let rear = Suspension::for_axle(&v.suspensions, 1).unwrap();
+        assert_eq!((front.kind, front.level_time), (SuspensionKind::Air, 6.0));
+        assert_eq!((rear.kind, rear.friction), (SuspensionKind::Leaf, 3000.0));
+        assert!(Suspension::for_axle(&[], 0).is_none());
+    }
 
     #[test]
     fn a_vehicle_declares_its_transport_modes() {
