@@ -39,7 +39,7 @@
   </div>
   <div class="drawer-subheader">openMapper</div>
   <div class="drawer-section" id="mapper-links">
-    <a href="#/mapper" data-route="/mapper"><span class="material-icons">edit_road</span>Map editor<span class="new-badge" id="mapper-badge" hidden>New</span></a>
+    <a href="#/docs/OPENMAPPER" data-route="/docs/OPENMAPPER"><span class="material-icons">edit_road</span>Map editor<span class="new-badge" id="mapper-badge" hidden>New</span></a>
   </div>
   <div class="drawer-subheader">Documentation</div>
   <div class="drawer-section" id="doc-links"></div>
@@ -100,7 +100,7 @@
     </div>
     <div class="card card-warning elevation-2" id="mapper-news" hidden>
       <span class="material-icons card-icon">edit_road</span>
-      <div><h3>New: openMapper, a map editor for openOMSI</h3><p>Draw roads, place buildings and trees, shape the ground and drive your map in openOMSI on one key. <a href="#/mapper">Meet openMapper</a></p></div>
+      <div><h3>New: openMapper, a map editor for openOMSI</h3><p>Draw roads, place buildings and trees, shape the ground and drive your map in openOMSI on one key. <a href="#/docs/OPENMAPPER">Meet openMapper</a></p></div>
     </div>
     <div class="card card-warning elevation-2">
       <span class="material-icons card-icon">system_update</span>
@@ -128,49 +128,6 @@
       <div class="card elevation-1"><span class="material-icons card-icon">code</span><h3>Plugins</h3><p>Lua plugins as one text file in <code>plugins/</code>, reloaded as you save; compiled <code>.oop</code> plugins in Lua or WebAssembly; OMSI's plugin DLLs on Windows. <a href="#/docs/PLUGINS">Plugin docs</a> and the <a href="https://github.com/openOMSI-org/openOMSI-Development-Tools">Development Tools</a>.</p></div>
       <div class="card elevation-1"><span class="material-icons card-icon">description</span><h3>Open formats</h3><p>Every OMSI file format is written down - useful for modders and tool makers too. <a href="#/docs/FORMATS">More</a></p></div>
     </div>
-  </div>
-</template>
-
-<template id="mapper">
-  <div class="content">
-    <h1>openMapper</h1>
-    <p class="lead">A simple map editor for openOMSI. Draw roads with a couple of clicks, place buildings and trees from a visual catalogue, shape and paint the ground, and drive your map in openOMSI with a single button. It is built for anyone to pick up, not just experienced map makers.</p>
-    <div class="card card-warning elevation-2">
-      <span class="material-icons card-icon">construction</span>
-      <div><h3>Early release: expect bugs</h3><p>openMapper is new. Things may be missing, broken or change between versions, and a map you care about deserves a copy (saving keeps the last ten versions). Report problems on <a href="https://github.com/openOMSI-org/openMapper/issues">GitHub</a> or on <a href="https://discord.gg/openomsi">Discord</a>.</p></div>
-    </div>
-    <div class="card card-warning elevation-2">
-      <span class="material-icons card-icon">warning</span>
-      <div><h3>You need the original OMSI&nbsp;2</h3><p>Maps are built from the content of an installed OMSI&nbsp;2 (Steam or retail), which is never written to. Maps and imported assets go into openOMSI's content folder.</p></div>
-    </div>
-
-    <h2 class="section-title">What it can do</h2>
-    <div class="grid">
-      <div class="card elevation-1"><span class="material-icons card-icon">edit_road</span><h3>Roads and junctions</h3><p>Two clicks make a road; junctions, traffic lights, crossings, switches and roundabouts come by themselves.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">park</span><h3>Objects and plants</h3><p>A visual catalogue of the installation's buildings, trees and splines, lining up with roads, and a plant brush.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">terrain</span><h3>Terrain and paint</h3><p>Sculpting brushes, ramps, height maps, ground texture painting, tiles and water.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">public</span><h3>Real places</h3><p>Satellite imagery, terrain heights and OpenStreetMap: roads, stops, lines, buildings, trees and water.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">alt_route</span><h3>Lines and traffic</h3><p>Timetable, tours, depot files, AI traffic and paths.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">view_in_ar</span><h3>Your own models</h3><p>Import glTF, FBX, OBJ and more, edit meshes, make materials and PBR maps, and export.</p></div>
-      <div class="card elevation-1"><span class="material-icons card-icon">play_circle</span><h3>Check and drive</h3><p>A map check, the game's own checks, safe saving with earlier versions, and a test drive in openOMSI on one key (<code>F5</code>).</p></div>
-    </div>
-
-    <h2 class="section-title">Download</h2>
-    <p class="lead" id="mp-version">Loading the latest release…</p>
-    <div class="grid" id="mp-grid"></div>
-    <ul class="steps">
-      <li><b>Windows:</b> unpack the zip and run <code>openmapper.exe</code>. Nothing else is needed.</li>
-      <li><b>macOS:</b> unpack the zip and move <code>openMapper.app</code> to Applications. The app is not notarised: the first time, right-click it and choose <i>Open</i>.</li>
-      <li><b>Linux:</b> unpack the archive and run <code>./openmapper</code>. It needs GTK 3 for the file dialogs and a Vulkan or OpenGL driver.</li>
-    </ul>
-
-    <h2 class="section-title">Learn more</h2>
-    <p>
-      <a class="btn btn-contained" href="#/mapper/docs/TUTORIAL"><span class="material-icons">school</span>Your first map</a>
-      <a class="btn btn-outlined" href="#/mapper/docs/FEATURES"><span class="material-icons">list</span>All features and controls</a>
-      <a class="btn btn-outlined" href="https://github.com/openOMSI-org/openMapper"><span class="material-icons">code</span>Source code</a>
-      <a class="btn btn-outlined" href="https://github.com/openOMSI-org/openMapper/releases"><span class="material-icons">new_releases</span>Releases</a>
-    </p>
   </div>
 </template>
 

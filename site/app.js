@@ -13,6 +13,7 @@ const MAPPER_DOCS = [
   { file: "ROADMAP", title: "Roadmap", icon: "flag" },
 ];
 const DOCS = [
+  { file: "OPENMAPPER", title: "openMapper", icon: "edit_road" },
   { file: "USER_GUIDE", title: "User guide", icon: "sports_esports" },
   { file: "ANDROID", title: "Android & mobile", icon: "smartphone" },
   { file: "VR", title: "Virtual reality", icon: "view_in_ar" },
@@ -59,7 +60,7 @@ const view = document.getElementById("view");
 const drawer = document.getElementById("drawer");
 const scrim = document.getElementById("scrim");
 
-document.getElementById("doc-links").innerHTML = DOCS.map(d =>
+document.getElementById("doc-links").innerHTML = DOCS.filter(d => d.file !== "OPENMAPPER").map(d =>
   `<a href="#/docs/${d.file}" data-route="/docs/${d.file}"><span class="material-icons">${d.icon}</span>${d.title}</a>`).join("");
 
 document.getElementById("mapper-links").insertAdjacentHTML("beforeend", MAPPER_DOCS.map(d =>
@@ -200,42 +201,6 @@ async function download(beta = false) {
 }
 
 // openMapper, the map editor: its own repository's latest release, the same way as the game's
-const MAPPER_PLATFORMS = [
-  { key: "windows-x64", ext: "zip", name: "Windows", icon: "desktop_windows", note: "64-bit (x64), Windows 10 or newer", os: "windows" },
-  { key: "windows-arm64", ext: "zip", name: "Windows on ARM", icon: "desktop_windows", note: "ARM64, Windows 11", os: "windows-arm" },
-  { key: "macos-arm64", ext: "zip", name: "macOS (Apple silicon)", icon: "laptop_mac", note: "M1 or newer, macOS 11 or newer", os: "mac" },
-  { key: "macos-x64", ext: "zip", name: "macOS (Intel)", icon: "laptop_mac", note: "Intel Macs, macOS 11 or newer", os: "mac-intel" },
-  { key: "linux-x64", ext: "tar.gz", name: "Linux", icon: "computer", note: "x86-64, Vulkan or OpenGL, GTK 3", os: "linux" },
-  { key: "linux-arm64", ext: "tar.gz", name: "Linux on ARM", icon: "computer", note: "ARM64, Vulkan or OpenGL, GTK 3", os: "linux-arm" },
-];
-async function mapper() {
-  showTemplate("mapper");
-  document.title = "openMapper · openOMSI";
-  const ver = document.getElementById("mp-version");
-  const grid = document.getElementById("mp-grid");
-  let rel;
-  try {
-    const r = await fetch(`https://api.github.com/repos/${MAPPER_REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
-    if (!r.ok) throw new Error(r.status === 403 ? "GitHub's hourly request limit is reached - try again later." : `GitHub answered ${r.status}.`);
-    rel = await r.json();
-  } catch (e) {
-    if (view.contains(ver)) ver.innerHTML = `${esc(e.message)} <a href="https://github.com/${MAPPER_REPO}/releases/latest">Releases on GitHub</a>`;
-    return;
-  }
-  if (!view.contains(ver)) return;
-  const v = rel.tag_name.replace(/^v/, "");
-  ver.innerHTML = `Latest version: <b>${esc(v)}</b> · ${new Date(rel.published_at).toLocaleDateString()}`;
-  const card = p => {
-    const a = (rel.assets || []).find(x => x.name === `openMapper-${v}-${p.key}.${p.ext}`);
-    const size = a ? ` · ${(a.size / 1048576).toFixed(0)} MB` : "";
-    const mine = p.os && p.os === visitorOs();
-    return `<div class="card elevation-${mine ? 3 : 1} dl-card${mine ? " dl-mine" : ""}"><div class="dl-head"><span class="material-icons card-icon">${p.icon}</span>${mine ? `<span class="dl-badge">Your system</span>` : ""}</div>
-      <h3>${p.name}</h3><p>${p.note}${size}</p>
-      ${a ? `<a class="btn btn-contained" href="${a.browser_download_url}" download><span class="material-icons">download</span>Download</a>` : `<p>Not in this release.</p>`}</div>`;
-  };
-  grid.innerHTML = [...MAPPER_PLATFORMS].sort((x, y) => (y.os === visitorOs()) - (x.os === visitorOs())).map(card).join("");
-}
-
 const MAPPER_RAW = `https://raw.githubusercontent.com/${MAPPER_REPO}/main`;
 // openMapper's own docs are read from its repository, so they are always the current ones
 const DOC_SETS = {
@@ -455,7 +420,7 @@ function route() {
   toggleDrawer(false);
   document.title = "openOMSI";
   if (path.startsWith("/docs/")) return doc(path.slice(6), anchor);
-  if (path === "/mapper") return mapper();
+  if (path === "/mapper") { location.replace("#/docs/OPENMAPPER"); return; }
   if (path.startsWith("/mapper/docs/")) return doc(path.slice(13), anchor, "mapper");
   if (path === "/download") return download();
   if (path === "/beta") return download(true);
