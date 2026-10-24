@@ -240,10 +240,11 @@ fn sun_glare(dir: vec3<f32>) -> vec3<f32> {
         return vec3<f32>(0.0);
     }
     let cos_t = clamp(dot(dir, s), -1.0, 1.0);
-    let theta = max(degrees(acos(cos_t)), 0.25);
-    if (theta > 100.0) {
+    // (cos 100 degrees: past it there is no veil, and the arc cosine is not needed)
+    if (cos_t < -0.17364818) {
         return vec3<f32>(0.0);
     }
+    let theta = max(degrees(acos(cos_t)), 0.25);
     let seen = textureLoad(t_fog, vec2<i32>(0, i32(textureDimensions(t_fog).y) - 1), 0).r;
     if (seen <= 0.0) {
         return vec3<f32>(0.0);
@@ -275,6 +276,16 @@ fn gathered_air_light(at: vec2<f32>, len: f32) -> vec3<f32> {
     let f = hp - floor(hp);
     // (the last row is the sun's, see `fs_fog_lamps`)
     let hd = vec2<i32>(textureDimensions(t_fog)) - vec2<i32>(1, 2);
+    // (nothing in the four nearest half-size rays: no lamp's cone and no shaft here - most of
+    // a picture in clear air - and the sixteen taps would only add up zeros)
+    let n00 = textureLoad(t_fog, clamp(base, vec2<i32>(0), hd), 0).rgb;
+    let n10 = textureLoad(t_fog, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), hd), 0).rgb;
+    let n01 = textureLoad(t_fog, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), hd), 0).rgb;
+    let n11 = textureLoad(t_fog, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), hd), 0).rgb;
+    let near = max(max(abs(n00), abs(n10)), max(abs(n01), abs(n11)));
+    if (max(near.r, max(near.g, near.b)) < 2e-4) {
+        return vec3<f32>(0.0);
+    }
     var sum = vec3<f32>(0.0);
     var wsum = 0.0;
     // (a twig or a wire none of the four rays met: the one nearest in distance)
