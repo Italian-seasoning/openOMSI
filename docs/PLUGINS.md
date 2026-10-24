@@ -740,6 +740,22 @@ On macOS, helpers extracted from ZIP files may need their executable bit restore
 | `omsi.map.tiles()` | list of tables | The map's tiles: `{x, y, file, loaded}` (numbered as global.cfg's `[map]` list). | 0.2.22 |
 | `omsi.map.to_world(tile_x, tile_y, local_x, local_y)` | x, y | A place given by its tile and the metres in it, in map coordinates. | 0.2.22 |
 
+#### Scenery objects (for scripts a .sco names)
+
+| Function | Returns | What it does | Since |
+| --- | --- | --- | --- |
+| `omsi.object.info(id)` | table | `{id, type, x, y, z, heading, active, distance}` of an object: its type (the `.sco` file's name), where it stands (map coordinates), the way it faces (compass degrees), whether it is in the script's range and how far the listener is from it (m). | 0.2.22 |
+| `omsi.object.list()` | list of numbers | The ids of the objects this script drives that are loaded now (those within its range are active). | 0.2.22 |
+| `omsi.object.meshes(id)` | list of strings | The mesh files of an object, in the order the scripts number them from 1. | 0.2.22 |
+| `omsi.object.set_mesh(id, mesh, [transform])` | boolean | Moves, turns and scales one mesh of an object over what its animations do. `mesh` is its number from 1 or its file name; `transform` is `{x, y, z, rx, ry, rz, sx, sy, sz, px, py, pz}`: a move in metres, a turn about the x, y and z axes in degrees (z up, positive counter-clockwise seen from above), a scale, all about the point (px, py, pz) of the mesh, every key optional. Without a table the mesh is as the model has it. Objects with a script are redrawn every frame; moving a mesh costs nothing more. | 0.2.22 |
+| `omsi.object.set_str(id, name, value)` | boolean | Sets a string variable of an object (a display's text, a texture's name). | 0.2.22 |
+| `omsi.object.set_var(id, name, value)` | boolean | Sets a script variable of an object, which its `[newanim]` animations, `[visible]` conditions, materials, lamps and sounds read; false when it has none of that name. | 0.2.22 |
+| `omsi.object.set_vars(id, values)` | integer | Sets many variables of an object at once (a table name -> number); how many it has. | 0.2.22 |
+| `omsi.object.set_visible(id, mesh, [visible])` | boolean | Shows or hides one mesh of an object whatever its `[visible]` conditions say; without `visible` the conditions decide again. | 0.2.22 |
+| `omsi.object.str(id, name)` | string or nil | A string variable of an object. | 0.2.22 |
+| `omsi.object.trigger(id, name)` | boolean | Runs a `{trigger:name}` of the object's own `.osc` script; false when it has none. | 0.2.22 |
+| `omsi.object.var(id, name)` | number or nil | A script variable of an object (those its `[varnamelist]` declares, and the builtin ones: `Switch`, `InUse`, `NightlightA` ...); `nil` when it has none of that name. | 0.2.22 |
+
 #### AI traffic
 
 | Function | Returns | What it does | Since |
@@ -1062,6 +1078,10 @@ On macOS, helpers extracted from ZIP files may need their executable bit restore
 | `lan_leave` | `id`, `name` | A player left the LAN session. | 0.2.22 |
 | `lan_message` | `from`, `data` | The same plugin on another player's game sent this one a message (`lan.send`): the player's id and the text. | 0.2.22 |
 | `lan_chat` | `name`, `text` | A line was said in the LAN session's chat (by another player or this one). | 0.2.22 |
+| `object_init` | `id`, `type`, `x`, `y`, `z`, `heading` | A scenery object this script drives came within its range (once, again if it leaves and comes back): the map's id of the object, its type (the `.sco` file's name), where it stands and the way it faces. Only a script a `.sco` names with `[lua_script]` hears the `object_*` events. | 0.2.22 |
+| `object_frame` | `id`, `dt` | A frame of an object this script drives, while it is in range; `dt` is the game seconds since the last frame of that object (at the rate of the `.sco`'s `[lua_rate]`, else every game frame). | 0.2.22 |
+| `object_gone` | `id` | An object this script drives left its range or was unloaded with its tile; its state in the script can go. | 0.2.22 |
+| `object_click` | `id`, `event` | The player clicked the `[mouseevent]` of a mesh of an object this script drives. | 0.2.22 |
 
 <!-- api:end -->
 

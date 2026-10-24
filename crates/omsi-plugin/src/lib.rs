@@ -1072,6 +1072,8 @@ impl Plugin {
 
 /// The prefix of the name of a plugin that belongs to a vehicle.
 pub const VEHICLE_PREFIX: &str = "vehicle:";
+/// The prefix of the name of a plugin that drives scenery objects (`[lua_script]` of a `.sco`).
+pub const OBJECT_PREFIX: &str = "object:";
 
 /// Every plugin of the plugins folders.
 #[derive(Default)]
@@ -1235,6 +1237,52 @@ impl Plugins {
             }
         }
         started
+    }
+
+    /// Start the script of a scenery object type (a file named by a `.sco`'s `[lua_script]`) as a
+    /// plugin called `object:<file>`, if it is not running yet. Returns the plugin's name, or
+    /// `None` when the file would not start. Object scripts may play sounds and nothing else
+    /// beyond the `object.*` functions: they are content from the map's maker.
+    pub fn ensure_object_script(&mut self, path: &Path) -> Option<String> {
+        let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "script".into());
+        let name = format!("{OBJECT_PREFIX}{stem}");
+        if self.has(&name) {
+            return Some(name);
+        }
+        let allowed: std::collections::HashSet<api::Perm> = [api::Perm::Audio].into_iter().collect();
+        let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+        let result: Result<(), String> = match ext.as_str() {
+            "lua" => {
+                let mut spec = lua::LuaSpec::disk(path);
+                spec.name = name.clone();
+                spec.perms = Some(allowed);
+                lua::LuaPlugin::start_spec(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.lua.push(p))
+            }
+            "oop" => match oop::load(path) {
+                Ok(oop::Loaded::Lua(mut spec)) => {
+                    spec.name = name.clone();
+                    spec.perms = Some(spec.perms.take().map_or_else(|| allowed.clone(), |d| d.intersection(&allowed).copied().collect()));
+                    lua::LuaPlugin::start_spec(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.lua.push(p))
+                }
+                Ok(oop::Loaded::Wasm(mut spec)) => {
+                    spec.name = name.clone();
+                    spec.perms = Some(spec.perms.take().map_or_else(|| allowed.clone(), |d| d.intersection(&allowed).copied().collect()));
+                    wasm_plugin::WasmHost::start(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.wasm.push(p))
+                }
+                Err(e) => Err(e),
+            },
+            other => Err(format!("an object script is .lua or .oop, not .{other}")),
+        };
+        match result {
+            Ok(()) => {
+                log::info!("object script {} started", path.display());
+                Some(name)
+            }
+            Err(e) => {
+                log::warn!("object script {} not started: {e}", path.display());
+                None
+            }
+        }
     }
 
     /// Stop the scripts of the vehicle that was the player's.

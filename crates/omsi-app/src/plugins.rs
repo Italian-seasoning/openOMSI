@@ -446,6 +446,45 @@ impl PluginIo for Io<'_> {
         }
         crate::plugin_io::data::query(self.veh_mut().ok_or("no player vehicle")?, query, args)
     }
+    fn object_owned_by(&self, id: i64, plugin: &str) -> bool {
+        self.app().is_some_and(|a| crate::plugin_io::object::owned_by(a, id, plugin))
+    }
+    fn object_list(&self, plugin: &str) -> Vec<i64> {
+        self.app().map(|a| crate::plugin_io::object::list(a, plugin)).unwrap_or_default()
+    }
+    fn object_info(&self, id: i64) -> Option<omsi_plugin::ObjectInfo> {
+        crate::plugin_io::object::info(self.app()?, id)
+    }
+    fn object_var(&mut self, id: i64, name: &str) -> Option<f32> {
+        crate::plugin_io::object::var(self.app_mut()?, id, name)
+    }
+    fn object_set_var(&mut self, id: i64, name: &str, v: f32) -> bool {
+        self.app_mut().is_some_and(|a| crate::plugin_io::object::set_var(a, id, name, v))
+    }
+    fn object_str(&mut self, id: i64, name: &str) -> Option<String> {
+        crate::plugin_io::object::str_var(self.app_mut()?, id, name)
+    }
+    fn object_set_str(&mut self, id: i64, name: &str, v: &str) -> bool {
+        self.app_mut().is_some_and(|a| crate::plugin_io::object::set_str(a, id, name, v))
+    }
+    fn object_trigger(&mut self, id: i64, name: &str) -> bool {
+        self.app_mut().is_some_and(|a| crate::plugin_io::object::trigger(a, id, name))
+    }
+    fn object_meshes(&self, id: i64) -> Vec<String> {
+        // (reads only: the instance is borrowed through the list)
+        let s = &self.app().map(|a| &a.session.scenery);
+        match s.and_then(|s| s.find(id).map(|i| s.get(i))) {
+            Some(o) => (0..o.inst.mesh_count()).filter_map(|i| o.inst.mesh_file(i).map(str::to_string)).collect(),
+            None => Vec::new(),
+        }
+    }
+    fn object_set_mesh(&mut self, id: i64, mesh: &str, t: Option<omsi_plugin::MeshTransform>) -> bool {
+        self.app_mut().is_some_and(|a| crate::plugin_io::object::set_mesh(a, id, mesh, t))
+    }
+    fn object_set_visible(&mut self, id: i64, mesh: &str, v: Option<bool>) -> bool {
+        self.app_mut().is_some_and(|a| crate::plugin_io::object::set_visible(a, id, mesh, v))
+    }
+
     fn system(&mut self, name: &str) -> Option<f32> {
         let v = SysVar::from_name(name)?;
         self.veh_mut().map(|veh| veh.host.sys_var(v))
