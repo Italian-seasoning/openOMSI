@@ -253,7 +253,7 @@ impl EngineRenderer {
 
     pub(crate) fn render(&self) -> Vec<u8> {
         let started = std::time::Instant::now();
-        let mut cv = Canvas { w: self.width, h: self.height, px: vec![0; (self.width * self.height * 4) as usize] };
+        let mut cv = Canvas::new(self.width, self.height);
         with_fonts(|reg, bold| {
             let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
             let mut c = self.layout_cache(&lay);
