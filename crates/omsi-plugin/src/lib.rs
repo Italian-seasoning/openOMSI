@@ -1070,6 +1070,9 @@ impl Plugin {
     }
 }
 
+/// The prefix of the name of a plugin that belongs to a vehicle.
+pub const VEHICLE_PREFIX: &str = "vehicle:";
+
 /// Every plugin of the plugins folders.
 #[derive(Default)]
 pub struct Plugins {
@@ -1174,6 +1177,77 @@ impl Plugins {
 
     pub fn is_empty(&self) -> bool {
         self.loaded.is_empty() && self.lua.is_empty() && self.wasm.is_empty()
+    }
+
+    /// What the scripts of a vehicle may do: they act on the bus and its cab, show their panels,
+    /// keep their own data and play sounds; the world, the traffic, the camera, the LAN, UDP and
+    /// native programs are for the player's own plugins. A vehicle is content from anywhere, and
+    /// a `.oop` that asks for more keeps only these.
+    pub fn vehicle_script_permissions() -> std::collections::HashSet<api::Perm> {
+        [api::Perm::Ui, api::Perm::Storage, api::Perm::VehicleWrite, api::Perm::Audio].into_iter().collect()
+    }
+
+    /// Start the scripts of a vehicle (its `[vehicle_script]` files) as plugins named
+    /// `vehicle:<file>`; the ones of the vehicle before it are stopped first. Returns how many
+    /// started.
+    pub fn attach_vehicle_scripts(&mut self, files: &[PathBuf]) -> usize {
+        self.detach_vehicle_scripts();
+        let allowed = Self::vehicle_script_permissions();
+        let mut started = 0;
+        for path in files {
+            let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+            let stem = path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "script".into());
+            let name = format!("{VEHICLE_PREFIX}{stem}");
+            let narrow = |declared: Option<std::collections::HashSet<api::Perm>>| -> Option<std::collections::HashSet<api::Perm>> {
+                Some(match declared {
+                    Some(d) => d.intersection(&allowed).copied().collect(),
+                    None => allowed.clone(),
+                })
+            };
+            let result: Result<(), String> = match ext.as_str() {
+                "lua" => {
+                    let mut spec = lua::LuaSpec::disk(path);
+                    spec.name = name.clone();
+                    spec.perms = narrow(None);
+                    lua::LuaPlugin::start_spec(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.lua.push(p))
+                }
+                "oop" => match oop::load(path) {
+                    Ok(oop::Loaded::Lua(mut spec)) => {
+                        spec.name = name.clone();
+                        spec.perms = narrow(spec.perms.take());
+                        lua::LuaPlugin::start_spec(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.lua.push(p))
+                    }
+                    Ok(oop::Loaded::Wasm(mut spec)) => {
+                        spec.name = name.clone();
+                        spec.perms = narrow(spec.perms.take());
+                        wasm_plugin::WasmHost::start(spec, path, &mut lua::NoVehicle, self.hub.clone()).map(|p| self.wasm.push(p))
+                    }
+                    Err(e) => Err(e),
+                },
+                other => Err(format!("a vehicle script is .lua or .oop, not .{other}")),
+            };
+            match result {
+                Ok(()) => {
+                    started += 1;
+                    log::info!("vehicle script {} started", path.display());
+                }
+                Err(e) => log::warn!("vehicle script {} not started: {e}", path.display()),
+            }
+        }
+        started
+    }
+
+    /// Stop the scripts of the vehicle that was the player's.
+    pub fn detach_vehicle_scripts(&mut self) {
+        let mine = |n: &str| n.starts_with(VEHICLE_PREFIX);
+        for p in self.lua.iter_mut().filter(|p| mine(&p.name)) {
+            p.stop(&mut lua::NoVehicle);
+        }
+        self.lua.retain(|p| !mine(&p.name));
+        for p in self.wasm.iter_mut().filter(|p| mine(&p.name)) {
+            p.stop(&mut lua::NoVehicle);
+        }
+        self.wasm.retain(|p| !mine(&p.name));
     }
 
     pub fn frame(&mut self, io: &mut dyn PluginIo) {

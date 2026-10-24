@@ -130,6 +130,27 @@ pub(crate) struct Seen {
 }
 
 impl crate::App {
+    /// The scripts of the player's vehicle (`[vehicle_script]` in its file) run as plugins for
+    /// as long as it is the player's: another vehicle (or none) stops them and starts its own.
+    pub(crate) fn sync_vehicle_scripts(&mut self, plugins: &mut Plugins) {
+        let now = self.player.as_ref().map(|p| p.vehicle.ty.def.path.clone());
+        if now == self.integrations.vehicle_scripts_of {
+            return;
+        }
+        let files = self.player.as_ref().map(|p| p.vehicle.ty.def.script_files.clone()).unwrap_or_default();
+        if files.is_empty() && self.integrations.vehicle_scripts_of.is_none() {
+            // (nothing running, nothing to start: just remember the vehicle)
+            self.integrations.vehicle_scripts_of = now;
+            return;
+        }
+        if omsi_cfg::flags::OMSI_NO_PLUGINS.is_set() {
+            self.integrations.vehicle_scripts_of = now;
+            return;
+        }
+        plugins.attach_vehicle_scripts(&files);
+        self.integrations.vehicle_scripts_of = now;
+    }
+
     /// What happened that the plugins hear about but cannot see by looking: the game
     /// pausing (they hear it at once, then stand still) and going on, the menu, people
     /// getting in and out of the bus, players joining and leaving, buttons of the

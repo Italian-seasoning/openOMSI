@@ -44,6 +44,7 @@ impl App {
         }
         // the plugins' frame, with the bus's scripts done
         let mut plugins = self.integrations.plugins.take().unwrap_or_else(crate::plugins::load);
+        self.sync_vehicle_scripts(&mut plugins);
         if !plugins.is_empty() {
             self.plugin_watch(&mut plugins);
         }

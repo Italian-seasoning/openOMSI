@@ -851,6 +851,7 @@ fn assemble_app(args: Args, settings: settings::Settings) -> App {
             update_watch,
             presence,
             plugins: None,
+            vehicle_scripts_of: None,
         },
         net: NetState::default(),
         service_msg: clock_note.map(|m| (m, 10.0)),

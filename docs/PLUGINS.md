@@ -45,6 +45,28 @@ Start a map with a bus: the greeting shows up on the screen, and above 50 km/h t
 Edit the file while the game runs and save it - the plugin is loaded again within a second
 ("Lua plugin hello reloaded").
 
+### Scripts that belong to a vehicle
+
+A vehicle can carry its own scripts, written in Lua or compiled to a `.oop` (Lua or Rust), so a
+mod needs no plugin installed by the player. Name them in the vehicle's `.bus` or `.ovh`, relative
+to the vehicle's folder:
+
+```
+[vehicle_script]
+scripts/cab.lua
+
+[vehicle_script]
+scripts/ibis.oop
+```
+
+The scripts start when the vehicle becomes the player's and stop when another vehicle (or none)
+does; they see the same `omsi.*` API as any plugin, the `omsi.var` of the bus being theirs. They
+are named `vehicle:<file>` in the log. Because a vehicle is content from anywhere, they have only
+these permissions: `ui`, `storage`, `vehicle_write` and `audio`. The world, the traffic, the
+camera, the LAN, UDP and native programs stay with the player's own plugins; a `.oop` that
+declares more keeps these four. OMSI 2 skips the keyword and runs the vehicle's `.osc` scripts as
+ever; a vehicle can have both.
+
 ### Where plugins live
 
 | Path | The plugin's name | Its data folder |
