@@ -70,3 +70,15 @@ vehicle is made for tram.*
 * A map made for several modes lists them all; the stations, tracks and routes of each mode
   are described in the pages for those modes.
 * If you are unsure how the game sees an old vehicle, the launcher shows its modes.
+
+## Where each part is described
+
+| Topic | Page |
+| --- | --- |
+| Stations, routes without tours, overhead wire, third rail, switches, depots, signals | [TRANSPORT_FORMATS.md](TRANSPORT_FORMATS.md) |
+| Trams, metro and railway vehicles: classes, track, switches, movement | [RAIL.md](RAIL.md) |
+| Trolleybuses: the wire, the poles, the drive | [TROLLEYBUS.md](TROLLEYBUS.md), [TROLLEY_MODS.md](TROLLEY_MODS.md) |
+| Leaf, air and progressive suspension | [SUSPENSION.md](SUSPENSION.md) |
+| Scripts that belong to a vehicle, plugins in Lua and `.oop` | [PLUGINS.md](PLUGINS.md) |
+| Screens as pages (`[htmltexture]`) | [HTMLTEXTURE.md](HTMLTEXTURE.md) |
+| Older additions that lift OMSI 2's limits | [MODDING.md](MODDING.md) |
