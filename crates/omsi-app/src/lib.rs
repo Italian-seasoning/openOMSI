@@ -21,7 +21,7 @@ use omsi_platform::discord;
 #[cfg(steam)]
 mod steam;
 pub(crate) use omsi_scene::head_idle;
-use omsi_input::headtrack;
+use omsi_input::{head_filter, headtrack, tobii};
 #[cfg(windows)]
 use omsi_xr::openxr;
 #[cfg(target_os = "android")]
@@ -142,6 +142,7 @@ mod plugin_io;
 // the plugins' panels (`omsi-plugin-ui`) at their old path, and the app's side of their input
 use omsi_plugin_ui as plugin_ui;
 mod plugin_panels;
+mod process_permissions;
 mod plugins;
 mod services;
 mod sim_thread;
@@ -794,6 +795,7 @@ fn assemble_app(args: Args, settings: settings::Settings) -> App {
             pad_voice_nearby: false,
             arrow_glance: false,
             headtrack: None,
+            head_filter: Default::default(),
             headtrack_failed: None,
             headtrack_scale_last: None,
             headtrack_scale_bias: [0.0; 6],
