@@ -1,5 +1,7 @@
 //! `maps/<map>/TTData/*` - bus stops, station links, trips, tracks and lines.
 
+pub mod transit;
+
 use omsi_cfg::CfgFile;
 use std::path::{Path, PathBuf};
 
@@ -464,6 +466,16 @@ impl TimetableData {
                     Ok(l) => d.lines.push(l),
                     Err(e) => d.errors.push(e.to_string()),
                 }
+            }
+        }
+        // the routes of the map's `transport` folder run as lines too
+        let mut issues = Vec::new();
+        let transit = omsi_transit::TransitData::load(map_dir, &mut issues);
+        if !transit.routes.list.is_empty() {
+            let merged = transit::merge_transit(&mut d, &transit);
+            log::info!("transport routes as timetable lines: {} lines, {} tours, {} trips", merged.lines, merged.tours, merged.trips);
+            for s in &merged.skipped {
+                log::warn!("transport routes: {s}");
             }
         }
         d

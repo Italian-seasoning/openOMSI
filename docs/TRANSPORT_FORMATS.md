@@ -69,6 +69,17 @@ service short
 depart 06:00 06:10 06:20
 ```
 
+### How routes run
+
+A service becomes a timetable line named after its route: one tour for each departure (the
+headway expanded between `from` and `to`, plus the listed `[trip]` departures), outward and, when
+the service turns back by reversing and its first segment is not `direction forward`, a second
+tour for the way back leaving the other end at the same times. The launcher's line list, the
+duty, the IBIS, the navigator and the AI buses see them like lines from a `.ttl`. A station is
+found among the map's bus stops by its `object` (the stop object's id code), else by name; a
+service with a station that is no stop is skipped and the log says which. A line of the same name
+in `TTData` is the map's own and stays; `.ttl` files and routes can live side by side.
+
 Rules the checker applies: every station exists in `stations.cfg` and serves the route's mode;
 a service's segments join up; a loop ends where it begins; a service has a headway or trips; the
 depot exists in `depots.cfg`; the route's mode is one of the map's modes.
