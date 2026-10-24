@@ -244,6 +244,13 @@ pub(crate) fn spawn_player_prepared(
         world.accept_placement_prefetch(staged);
     }
     let vt = prepared.ty;
+    if let omsi_cfg::transport::Admission::Refused(why) = omsi_sim::transport::admission(world.global.transport, &vt.def) {
+        if omsi_cfg::flags::OMSI_IGNORE_TRANSPORT.is_set() {
+            log::warn!("transport: {why} (OMSI_IGNORE_TRANSPORT is set, running anyway)");
+        } else {
+            anyhow::bail!("{} {} cannot run on this map. {why}", vt.def.manufacturer, vt.def.type_name);
+        }
+    }
     log::info!(
         "vehicle {} {}: {} meshes, {} script blocks, {} variables",
         vt.def.manufacturer,

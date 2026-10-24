@@ -134,6 +134,11 @@ pub struct Vehicle {
     /// `[rail_class]` (an openOMSI extension): `tram`, `metro` or `train`, when the file's
     /// shape does not tell.
     pub rail_class: Option<String>,
+    /// The modes the file declares with `[bus_transport]`, `[tram_transport]`,
+    /// `[railway_transport]`, `[metro_transport]` and `[trolleybus_transport]` (openOMSI
+    /// keywords); empty when it declares none (`omsi_sim::transport::modes_of` then works
+    /// the mode out from the file's shape).
+    pub transport: omsi_cfg::transport::ModeSet,
     /// `[pantograph_var]` / `[pantograph_trigger]` (openOMSI keywords): the script variable that
     /// says the pantograph is raised (1) or down (0), and the mouse-event trigger that toggles it.
     /// Without them a rail vehicle's pantograph is found by its mesh (see the game's
@@ -297,6 +302,44 @@ impl Vehicle {
             || self.rail_body_osc.is_some()
     }
 
+    /// The kind of rail vehicle this is, `None` for a road vehicle: a `[rail_class]` the file
+    /// gives outright; else a `[contact_shoe]` (a third rail) is a metro; a car over 45 t, or a
+    /// locomotive (four driven axles over 60 t), a railway train; the rest, light cars on
+    /// bogies however long, trams. (A modern tram of 40 m is lighter than a 20 m coach.)
+    pub fn rail_mode(&self) -> Option<omsi_cfg::transport::TransportMode> {
+        use omsi_cfg::transport::TransportMode;
+        if !self.is_rail() {
+            return None;
+        }
+        if let Some(m) = self.rail_class.as_deref().and_then(TransportMode::from_name).filter(|m| m.is_rail()) {
+            return Some(m);
+        }
+        if !self.contact_shoes.is_empty() {
+            return Some(TransportMode::Metro);
+        }
+        let heavy = self.mass_kg() > 45_000.0;
+        let loco = self.axles.iter().filter(|a| a.driven).count() >= 4 && self.mass_kg() > 60_000.0;
+        Some(if heavy || loco { TransportMode::Railway } else { TransportMode::Tram })
+    }
+
+    /// The modes of the vehicle and whether its file declared them (`[bus_transport]` and
+    /// the like). A file that names none is judged by its shape, so every OMSI 2 vehicle keeps
+    /// working: a rail vehicle by [`Vehicle::rail_mode`], a vehicle with `[trolley_pole]` gear a
+    /// bus and a trolleybus (it also runs where only buses are expected, as it always did),
+    /// anything else a bus.
+    pub fn transport_modes(&self) -> (omsi_cfg::transport::ModeSet, bool) {
+        use omsi_cfg::transport::{ModeSet, TransportMode};
+        if !self.transport.is_empty() {
+            return (self.transport, true);
+        }
+        let inferred = match self.rail_mode() {
+            Some(m) => ModeSet::of(m),
+            None if !self.trolley.poles.is_empty() => [TransportMode::Bus, TransportMode::Trolleybus].into_iter().collect(),
+            None => ModeSet::of(TransportMode::Bus),
+        };
+        (inferred, false)
+    }
+
     pub fn parse(file: &CfgFile) -> Vehicle {
         let is_ovh = file.path.extension().map(|e| e.eq_ignore_ascii_case("ovh")).unwrap_or(false);
         let mut v = Vehicle { path: file.path.clone(), kind: if is_ovh { VehicleKind::Other(0) } else { VehicleKind::Bus }, mass: 1000.0, ..Default::default() };
@@ -365,6 +408,9 @@ impl Vehicle {
                 "set_camera_std" => v.camera_std = r.usize(),
                 "set_camera_outside_center" => v.camera_outside_center = r.f32s::<3>(),
                 "rail_class" => v.rail_class = Some(r.str().to_string()),
+                k2 if omsi_cfg::transport::TransportMode::from_keyword(k2).is_some() => {
+                    v.transport.declare_keyword(k2);
+                }
                 "pantograph_var" => v.pantograph_var = Some(r.str().to_string()),
                 "pantograph_trigger" => v.pantograph_trigger = Some(r.str().to_string()),
                 "mass" => v.mass = r.f32(),
@@ -641,6 +687,14 @@ impl Vehicle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_vehicle_declares_its_transport_modes() {
+        let v = Vehicle::parse(&CfgFile::from_str("x.bus", "[mass]\n10\n[Tram_Transport]\n[boogies]\n1\n"));
+        assert_eq!(v.transport.describe(), "tram");
+        assert!(v.unknown_keywords.is_empty());
+        assert!(Vehicle::parse(&CfgFile::from_str("x.bus", "[mass]\n10\n")).transport.is_empty());
+    }
 
     #[test]
     fn axles_with_and_without_keywords() {

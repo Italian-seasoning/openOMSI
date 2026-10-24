@@ -317,6 +317,7 @@ flags! {
     OMSI_HTML_FALLBACK_FONT: Text, Switch, Use, "-", "Font file for the html pages' characters Inter lacks (Hangul, CJK); else Malgun Gothic (Windows) or AppleGothic (macOS).";
     OMSI_HTML_FALLBACK_FONT_BOLD: Text, Switch, Use, "-", "With OMSI_HTML_FALLBACK_FONT: its bold face.";
     OMSI_IBIS_BUDGET: Num, Tuning, Use, "10", "Seconds the IBIS typist may take per entry.";
+    OMSI_IGNORE_TRANSPORT: Bool, Switch, Use, "off", "Run a vehicle on a map built for other transport modes (the log still says so).";
     OMSI_INPUT: Text, Test, Use, "-", "Scripted keyboard, mouse and camera input for window runs.";
     OMSI_INSTANCE: Text, Setup, Use, "-", "The id of a game instance started by the launcher (set for the child process).";
     OMSI_INTEL_FULL_GPU: Bool, Switch, Use, "off", "Keep the requested settings on an Intel Vulkan adapter.";

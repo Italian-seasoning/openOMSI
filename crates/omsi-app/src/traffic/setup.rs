@@ -313,6 +313,11 @@ fn random_types(root: &Path, world: &World) -> RandomTypes {
                 }
                 let path = omsi_cfg::resolve_path(root, &v.file);
                 match VehicleType::load_ai(root, &path) {
+                    // a vehicle that declares its modes stays off a map built for others (cars and
+                    // lorries declare none: they are scenery on any street)
+                    Ok(t) if !t.def.transport.is_empty() && !omsi_cfg::transport::admit(world.global.transport, t.def.transport, true).is_allowed() => {
+                        log::debug!("AI vehicle {} is made for {}, not for this map", v.file, t.def.transport.describe());
+                    }
                     Ok(t) => {
                         // rail (only as scheduled trains), 3 = aircraft on flight paths
                         let rail = t.def.is_rail();
