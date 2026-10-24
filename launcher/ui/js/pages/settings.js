@@ -12,7 +12,6 @@ import { UpdateRow, checkUpdates } from '../updates.js';
 import { SETTINGS_TABS, GRAPHICS_PROFILE_KEYS } from './settings-schema.js';
 import { VersionsDialog } from './versions.js';
 import { RadioStations } from './radio-stations.js';
-import { ContentTest } from './content-test.js';
 import { AiListsPage } from './ai-lists.js';
 import { OptimiseBlock } from './optimise.js';
 
@@ -57,18 +56,23 @@ export function SettingsPage() {
   const [ask, dialog] = useConfirm();
   if (!s.settings) return null;
   const platform = s.boot?.platform || '';
+  // (the model test runs the game program: not on a phone)
+  const phone = ['android', 'ios'].includes(platform);
   const tabs = SETTINGS_TABS.filter((x) => visible(x, s.settings, platform));
   const current = tabs.find((x) => x.id === tab) || tabs[0];
   const pick = (id) => {
+    // (Troubleshooting is no tab of its own: it opens that page at its model test)
+    if (id === 'troubleshoot') {
+      remember('troubleshoot-tab', 'content');
+      return set({ page: 'troubleshoot' });
+    }
     setTab(id);
     remember('settings-tab', id);
   };
   return html`
     <${PageHead} title="Settings" text="Every change is saved at once; the game reads them when it starts." />
-    <${Tabs} value=${current.id} options=${tabs.map((x) => [x.id, x.label])} onChange=${pick} />
-    ${current.page === 'content'
-      ? html`<div key=${tab}><${ContentTest} /></div>`
-      : current.page === 'ailists'
+    <${Tabs} value=${current.id} options=${[...tabs.map((x) => [x.id, x.label]), ...(phone ? [] : [['troubleshoot', 'Troubleshooting']])]} onChange=${pick} />
+    ${current.page === 'ailists'
       ? html`<div key=${tab}><${AiListsPage} /></div>`
       : html`<div class="settings-grid" key=${tab}>
       ${current.cols.map((col) => html`<${Card} title=${col.title}>
