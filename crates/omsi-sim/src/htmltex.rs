@@ -251,8 +251,11 @@ pub fn load_page(dirs: &[&Path], rel: &str) -> String {
                 None => out.push_str(tag),
             }
             rest = &rest[end..];
-        } else if let Some(js) = attr(tag, "src").and_then(|s| read(&s)) {
-            out.push_str(&format!("<script>{js}</script>"));
+        } else if let Some((src, js)) = attr(tag, "src").and_then(|s| read(&s).map(|t| (s, t))) {
+            // (a module keeps its kind, and every external script the file it came from: the
+            // imports of a module are relative to it)
+            let module = attr(tag, "type").is_some_and(|t| t.eq_ignore_ascii_case("module"));
+            out.push_str(&format!("<script{} data-omsi-src=\"{}\">{js}</script>", if module { " type=\"module\"" } else { "" }, src.split(['?', '#']).next().unwrap_or(&src).replace('"', "")));
             let after = &rest[end..];
             let close = after.to_ascii_lowercase().find("</script>").map(|c| c + "</script>".len()).unwrap_or(0);
             rest = &after[close..];

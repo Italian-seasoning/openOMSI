@@ -87,10 +87,21 @@ pub(crate) struct Rule {
 }
 
 #[derive(Debug, Clone, Default)]
+pub(crate) struct ScriptMeta {
+    pub(crate) run: bool,
+    pub(crate) module: bool,
+    /// The file the text came from (`data-omsi-src`, put there where an external script was
+    /// inlined), what a module's imports are relative to.
+    pub(crate) path: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Dom {
     pub(crate) nodes: Vec<Node>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) scripts: Vec<String>,
+    /// Per script: whether to run it, whether it is a module, and the file it came from.
+    pub(crate) script_meta: Vec<ScriptMeta>,
     pub(crate) body: usize,
     /// Counts every visible change of the page; layout and frame caches key on it.
     pub(crate) generation: u64,
@@ -255,6 +266,13 @@ impl Dom {
                         css.push_str(&body);
                         css.push('\n');
                     } else {
+                        let n = &dom.nodes[idx];
+                        let attr = |k: &str| n.attrs.iter().find(|(a, _)| a == k).map(|(_, v)| v.to_ascii_lowercase());
+                        let ty = attr("type").unwrap_or_default();
+                        let module = ty == "module";
+                        let run = ty.is_empty() || module || ty.contains("javascript") || ty.contains("ecmascript");
+                        let path = n.attrs.iter().find(|(a, _)| a == "data-omsi-src").map(|(_, v)| v.clone());
+                        dom.script_meta.push(ScriptMeta { run, module, path });
                         dom.scripts.push(body);
                     }
                     i += end;
@@ -318,6 +336,11 @@ impl Dom {
             self.nodes[p].kids.retain(|&k| k != idx);
             self.generation += 1;
         }
+    }
+
+    /// Is the node part of the page (under the root), not a detached piece?
+    pub(crate) fn is_attached(&self, idx: usize) -> bool {
+        self.is_inside(idx, 0)
     }
 
     pub(crate) fn is_inside(&self, mut idx: usize, ancestor: usize) -> bool {
@@ -436,14 +459,165 @@ impl Dom {
             && s.pseudos.iter().all(|p| self.matches_pseudo(idx, p))
     }
 
-    /// The value of attribute `name` of an element: the ones the parser keeps in fields too.
+    /// The value of attribute `name` of an element (lower-case name); `None` when it has none.
+    /// The ones the engine keeps in fields of their own are read from there, so a script's
+    /// changes show.
     pub(crate) fn attr(&self, idx: usize, name: &str) -> Option<String> {
         let n = &self.nodes[idx];
         match name {
-            "id" if !n.id.is_empty() => Some(n.id.clone()),
-            "class" if !n.classes.is_empty() => Some(n.classes.join(" ")),
+            "id" => (!n.id.is_empty()).then(|| n.id.clone()),
+            "class" => (!n.classes.is_empty()).then(|| n.classes.join(" ")),
+            "style" => (!n.inline.is_empty()).then(|| style_text(&n.inline)),
+            "src" => (!n.src.is_empty()).then(|| n.src.clone()),
+            "width" => (!n.attr_w.is_empty()).then(|| n.attr_w.clone()),
+            "height" => (!n.attr_h.is_empty()).then(|| n.attr_h.clone()),
+            on if on.len() > 2 && on.starts_with("on") => n.on.iter().find(|(k, _)| k == &on[2..]).map(|(_, v)| v.clone()),
             _ => n.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.clone()),
         }
+    }
+
+    /// Set attribute `name` (lower case) of an element.
+    pub(crate) fn set_attr(&mut self, idx: usize, name: &str, val: &str) {
+        if self.attr(idx, name).as_deref() == Some(val) {
+            return;
+        }
+        let n = &mut self.nodes[idx];
+        match name {
+            "id" => n.id = val.to_string(),
+            "class" => n.classes = val.split_whitespace().map(str::to_string).collect(),
+            "style" => n.inline = parse_style_attr(val),
+            "src" => n.src = val.to_string(),
+            "width" => n.attr_w = val.to_string(),
+            "height" => n.attr_h = val.to_string(),
+            on if on.len() > 2 && on.starts_with("on") => {
+                let ty = on[2..].to_string();
+                n.on.retain(|(k, _)| *k != ty);
+                n.on.push((ty, val.to_string()));
+            }
+            _ => {}
+        }
+        match n.attrs.iter_mut().find(|(k, _)| k == name) {
+            Some(slot) => slot.1 = val.to_string(),
+            None => n.attrs.push((name.to_string(), val.to_string())),
+        }
+        self.generation += 1;
+    }
+
+    pub(crate) fn remove_attr(&mut self, idx: usize, name: &str) {
+        let n = &mut self.nodes[idx];
+        match name {
+            "id" => n.id.clear(),
+            "class" => n.classes.clear(),
+            "style" => n.inline.clear(),
+            "src" => n.src.clear(),
+            "width" => n.attr_w.clear(),
+            "height" => n.attr_h.clear(),
+            on if on.len() > 2 && on.starts_with("on") => n.on.retain(|(k, _)| *k != on[2..]),
+            _ => {}
+        }
+        n.attrs.retain(|(k, _)| k != name);
+        self.generation += 1;
+    }
+
+    /// The names of an element's attributes.
+    pub(crate) fn attr_names(&self, idx: usize) -> Vec<String> {
+        let n = &self.nodes[idx];
+        let mut out: Vec<String> = n.attrs.iter().map(|(k, _)| k.clone()).collect();
+        for (k, present) in [("id", !n.id.is_empty()), ("class", !n.classes.is_empty()), ("style", !n.inline.is_empty()), ("src", !n.src.is_empty())] {
+            if present && !out.iter().any(|o| o == k) {
+                out.push(k.to_string());
+            }
+        }
+        out.retain(|k| self.attr(idx, k).is_some());
+        out
+    }
+
+    pub(crate) fn create_text(&mut self, text: &str) -> usize {
+        self.nodes.push(Node { tag: "#text".into(), text: Some(text.to_string()), ..Node::default() });
+        self.nodes.len() - 1
+    }
+
+    /// `parent.insertBefore(child, before)`; `before` None appends. A node cannot go into itself.
+    pub(crate) fn insert_before(&mut self, parent: usize, child: usize, before: Option<usize>) {
+        if child == 0 || self.is_inside(parent, child) {
+            return;
+        }
+        self.detach(child);
+        self.nodes[child].parent = Some(parent);
+        let at = before.and_then(|b| self.nodes[parent].kids.iter().position(|&k| k == b));
+        match at {
+            Some(p) => self.nodes[parent].kids.insert(p, child),
+            None => self.nodes[parent].kids.push(child),
+        }
+        self.generation += 1;
+    }
+
+    /// The markup of an element's children.
+    pub(crate) fn inner_html(&self, idx: usize) -> String {
+        let mut out = String::new();
+        for &k in &self.nodes[idx].kids {
+            self.write_html(k, &mut out);
+        }
+        out
+    }
+
+    pub(crate) fn outer_html(&self, idx: usize) -> String {
+        let mut out = String::new();
+        self.write_html(idx, &mut out);
+        out
+    }
+
+    fn write_html(&self, idx: usize, out: &mut String) {
+        let n = &self.nodes[idx];
+        if let Some(t) = &n.text {
+            out.push_str(&t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"));
+            return;
+        }
+        out.push('<');
+        out.push_str(&n.tag);
+        for name in self.attr_names(idx) {
+            if let Some(v) = self.attr(idx, &name) {
+                out.push_str(&format!(" {name}=\"{}\"", v.replace('&', "&amp;").replace('"', "&quot;")));
+            }
+        }
+        out.push('>');
+        if VOID.contains(&n.tag.as_str()) {
+            return;
+        }
+        for &k in &n.kids {
+            self.write_html(k, out);
+        }
+        out.push_str(&format!("</{}>", n.tag));
+    }
+
+    /// A copy of `idx` (and its subtree when `deep`), hanging nowhere.
+    pub(crate) fn clone_node(&mut self, idx: usize, deep: bool) -> usize {
+        let mut n = self.nodes[idx].clone();
+        n.parent = None;
+        n.kids.clear();
+        let copy = self.nodes.len();
+        self.nodes.push(n);
+        if deep {
+            for k in self.nodes[idx].kids.clone() {
+                let kc = self.clone_node(k, true);
+                self.nodes[kc].parent = Some(copy);
+                self.nodes[copy].kids.push(kc);
+            }
+        }
+        copy
+    }
+
+    /// Every element below `idx` (not `idx` itself), in document order.
+    pub(crate) fn descendants(&self, idx: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut stack: Vec<usize> = self.nodes[idx].kids.iter().rev().copied().collect();
+        while let Some(k) = stack.pop() {
+            if self.nodes[k].text.is_none() {
+                out.push(k);
+            }
+            stack.extend(self.nodes[k].kids.iter().rev().copied());
+        }
+        out
     }
 
     fn matches_attr(&self, idx: usize, a: &AttrSel) -> bool {
@@ -491,6 +665,11 @@ impl Dom {
         let chains = parse_selector_list(sel);
         (0..self.nodes.len()).filter(|&i| chains.iter().any(|c| self.matches(i, c))).collect()
     }
+}
+
+/// An inline style as the `style` attribute writes it.
+pub(crate) fn style_text(inline: &[(String, String)]) -> String {
+    inline.iter().map(|(k, v)| format!("{k}: {v};")).collect::<Vec<_>>().join(" ")
 }
 
 pub(crate) fn parse_attrs(s: &str) -> Vec<(String, String)> {
