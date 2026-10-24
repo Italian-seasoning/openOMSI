@@ -704,6 +704,7 @@ impl App {
                                 }
                             }
                         }
+                        sch.start_transit(w.clone());
                         self.session.schedule = Some(sch);
                     } else if !crate::rail_drive::args_rail(&self.args) && self.args.lan_join.is_none() {
                         // (the timetable is still the map's to read and pick a duty from: a

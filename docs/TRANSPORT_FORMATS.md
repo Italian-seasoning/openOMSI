@@ -77,7 +77,17 @@ the service turns back by reversing and its first segment is not `direction forw
 tour for the way back leaving the other end at the same times. The launcher's line list, the
 duty, the IBIS, the navigator and the AI buses see them like lines from a `.ttl`. A station is
 found among the map's bus stops by its `object` (the stop object's id code), else by name; a
-service with a station that is no stop is skipped and the log says which. A line of the same name
+service with a station that is no stop is skipped and the log says which. The track of a trip is found by the game: it reads the whole map's
+network once at the start (as the navigator does), takes for each station the lanes of the mode's
+kind (rail for trams, metro and railway, street for buses and trolleybuses) within 25 m, and
+routes through them station by station over the shortest way, never against a lane's direction
+(so the two tracks of a double line are told apart by the direction the trip goes). Where a
+station stands comes from `pos` in `stations.cfg`, else from the stop object; a station with
+neither is reported and its services do not run. The times come from the length of each stretch,
+the segment's `speed` (else 50 km/h for trams, 70 metro, 100 railway, 40 buses), the vehicle
+accelerating and braking, and `dwell` at each stop; until the track is found the departures wait.
+The vehicles come from the service's `depot`: its `ai_group` names the map's AI group (in
+`ailists.cfg`) that supplies them, rail vehicles for a rail service. A line of the same name
 in `TTData` is the map's own and stays; `.ttl` files and routes can live side by side.
 
 Rules the checker applies: every station exists in `stations.cfg` and serves the route's mode;

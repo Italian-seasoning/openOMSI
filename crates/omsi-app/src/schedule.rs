@@ -50,6 +50,9 @@ pub struct Schedule {
     fleet_wanted: Vec<(Arc<VehicleType>, Option<usize>)>,
     /// Seconds until the next look for due departures (see `frame_traffic`).
     pub(crate) tick_t: f32,
+    /// The tracks of the map's transport routes, being found on a worker once the map's whole
+    /// network is read.
+    transit_rx: Option<std::sync::mpsc::Receiver<Vec<(String, Result<omsi_sim::timetable_run::transit::Routed, String>)>>>,
 }
 
 impl std::ops::Deref for Schedule {
@@ -78,6 +81,46 @@ impl Schedule {
             fleet_wanted: Vec::new(),
             // (a second after the population's, never in the same frame)
             tick_t: 1.0,
+            transit_rx: None,
+        }
+    }
+
+    /// Find the tracks of the trips made from the map's transport routes: the whole map's network
+    /// is read on a worker (the navigator reads the same), the trips routed over it, and the
+    /// result installed by `poll_transit`. Their departures wait until then.
+    pub fn start_transit(&mut self, world: Arc<World>) {
+        if self.transit_rx.is_some() || !self.sim.transit_pending() {
+            return;
+        }
+        let wanted = self.sim.transit_wanted();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let spawned = std::thread::Builder::new().name("transport routes".into()).spawn(move || {
+            let m = world.navigation_map();
+            let mut net = omsi_sim::traffic::Network { lanes: m.lanes, ..Default::default() };
+            net.link(1.5);
+            let places: hashbrown::HashMap<i64, glam::DVec3> = m.places.into_iter().collect();
+            let _ = tx.send(omsi_sim::timetable_run::transit::route_all(&net, &places, &wanted));
+        });
+        if spawned.is_ok() {
+            self.transit_rx = Some(rx);
+        }
+    }
+
+    /// Install the tracks the worker found, if it has finished.
+    pub fn poll_transit(&mut self) {
+        let Some(rx) = self.transit_rx.as_ref() else { return };
+        match rx.try_recv() {
+            Ok(done) => {
+                self.sim.install_transit(done);
+                self.transit_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            Err(_) => {
+                // (the worker died: give the trips up rather than hold their departures for ever)
+                let all: Vec<_> = self.sim.transit_wanted().into_iter().map(|t| (t.trip, Err("the router stopped".to_string()))).collect();
+                self.sim.install_transit(all);
+                self.transit_rx = None;
+            }
         }
     }
 

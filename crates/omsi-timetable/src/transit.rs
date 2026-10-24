@@ -9,9 +9,34 @@
 //! the stop's object), else by name.
 
 use crate::{Line, TimetableData, Tour, TourTrip, Trip};
+
+/// The standing time at a stop of a segment that gives none (s).
+pub const DEFAULT_DWELL_S: f32 = 30.0;
 use omsi_transit::routes::{Route, Service, TurnBack};
 use omsi_transit::stations::Station;
 use omsi_transit::TransitData;
+
+/// A stop of a transit trip.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TransitStop {
+    /// The stop object's id (what the trip's `stations` hold).
+    pub object: i64,
+    pub name: String,
+    /// Where the station stands, when `stations.cfg` says (else the map's object tells).
+    pub pos: Option<[f64; 3]>,
+    /// Standing time (s).
+    pub dwell_s: f32,
+    /// The speed limit of the stretch to the next stop (m/s), when the segment gives one.
+    pub speed: Option<f32>,
+}
+
+/// A trip made from a route, to be laid on the rails.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TransitTrip {
+    pub trip: String,
+    pub mode: omsi_cfg::transport::TransportMode,
+    pub stops: Vec<TransitStop>,
+}
 
 /// What the merge did, for the log.
 #[derive(Debug, Default, PartialEq)]
@@ -108,11 +133,35 @@ pub fn merge_transit(data: &mut TimetableData, transit: &TransitData) -> Merged 
             let back_trip = format!("{}_{}_back", route.id, sv.id);
             let to_station = |n: &str| transit.stations.get(n).map(|s| s.name.clone()).unwrap_or_else(|| n.to_string());
             data.trips.retain(|t| t.name != out_trip && t.name != back_trip);
+            // the dwell and speed of each stop, from the segments the service runs over
+            let mut meta: Vec<TransitStop> = Vec::new();
+            for sid in &sv.segments {
+                let Some(seg) = route.segment(sid) else { continue };
+                let stops = seg.stops();
+                for (k, st) in stops.iter().enumerate() {
+                    let Some(station) = transit.stations.get(st) else { continue };
+                    let Some(object) = stop_id(data, station) else { continue };
+                    if meta.last().is_some_and(|m| m.object == object) {
+                        // (the stop where two segments meet: the later segment's speed to the next)
+                        if let Some(m) = meta.last_mut() {
+                            m.speed = seg.speed.or(m.speed);
+                        }
+                        continue;
+                    }
+                    let _ = k;
+                    meta.push(TransitStop { object, name: station.name.clone(), pos: station.pos, dwell_s: seg.dwell_s.unwrap_or(crate::transit::DEFAULT_DWELL_S), speed: seg.speed });
+                }
+            }
             data.trips.push(trip_for(out_trip.clone(), route, &ids, &to_station(&last)));
+            data.transit_trips.retain(|t| t.trip != out_trip && t.trip != back_trip);
+            data.transit_trips.push(TransitTrip { trip: out_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: meta.clone() });
             out.trips += 1;
             let reverse = sv.turn_back == TurnBack::Reverse && !route.segment(sv.segments.first().map(String::as_str).unwrap_or("")).is_some_and(|s| s.one_way);
             if reverse {
                 data.trips.push(trip_for(back_trip.clone(), route, &back_ids, &to_station(&first)));
+                let mut back_meta = meta.clone();
+                back_meta.reverse();
+                data.transit_trips.push(TransitTrip { trip: back_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: back_meta });
                 out.trips += 1;
             }
             let idx = match data.lines.iter().position(|l| l.name.eq_ignore_ascii_case(&line_name)) {
@@ -181,6 +230,13 @@ mod tests {
         assert_eq!(out.terminus, "Gamma");
         // the line text the game reads back
         assert!(line.to_text().contains("[addtrip]\r\nT1_all_out"));
+        // the stops of each trip, for the router
+        let tt = data.transit_trips.iter().find(|t| t.trip == "T1_all_out").unwrap();
+        assert_eq!(tt.stops.iter().map(|s| s.object).collect::<Vec<_>>(), vec![101, 102, 103]);
+        assert_eq!(tt.stops[0].dwell_s, 30.0);
+        assert_eq!(tt.mode, omsi_cfg::transport::TransportMode::Tram);
+        let back = data.transit_trips.iter().find(|t| t.trip == "T1_all_back").unwrap();
+        assert_eq!(back.stops[0].object, 103);
     }
 
     #[test]

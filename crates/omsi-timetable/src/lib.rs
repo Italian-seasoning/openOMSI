@@ -414,6 +414,10 @@ pub struct TimetableData {
     pub tracks: Vec<Track>,
     pub lines: Vec<Line>,
     pub errors: Vec<String>,
+    /// Trips made from the map's `transport` routes that run on rails or off the station
+    /// links: their route over the track is found once the map's network is known (see
+    /// `omsi_sim::timetable_run::transit`).
+    pub transit_trips: Vec<transit::TransitTrip>,
 }
 
 impl TimetableData {
