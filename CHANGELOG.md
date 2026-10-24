@@ -25,10 +25,10 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
     at each bogie, with damping. `rail_body_roll`, `rail_body_pitch`, `rail_body_heave`,
     `rail_accel_side` and `rail_accel_vert` are written for scripts.
   - **AI trams and trains** pull as their class does: the pull falls with speed at the class's power.
-  - **Trolleybuses without a drive of their own** get a typical one for their mass (a rheostat
-    controller, an inverter where the description says so); its direction is read off the way the
-    script's torque points. It is built when the vehicle is, so the setting applies to the next one
-    spawned.
+  - **Legacy trolleybuses keep their script's traction**, including its gear and door-brake
+    interlocks, even with realistic physics enabled. An inferred generic drive stays inactive
+    until a script adapter can honor those controls. Explicitly configured trolleybus drives
+    and pole simulation remain available.
 
 - **LAN protocol 15**: a game of this version cannot join a session of an older one, nor the
   other way round (the AI traffic goes as a table, see below). Update the game on both sides.
