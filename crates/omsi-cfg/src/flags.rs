@@ -435,9 +435,9 @@ flags! {
     OMSI_PRESENT_MODE: Text, Tuning, Use, "auto", "How frames reach the screen: fifo (vsync), fifo_relaxed, mailbox, immediate or auto. Vsync is `auto` (AutoVsync); a mode the surface lacks falls back to auto.";
     OMSI_PROBE: Text, Test, Use, "-", "x0,y0,x1,y1[,n]: print terrain and road surface heights along a line.";
     OMSI_PROBE_GRID: Text, Test, Use, "-", "x,y,half,step: the wheels' ground on a grid around a point.";
-    OMSI_PROFILE: Bool, Debug, Use, "off", "Time per stage of the frame, logged.";
+    OMSI_PROFILE: Bool, Debug, Use, "off", "Time per stage of the frame, logged; the session summary comes after --exit-after or when the game is closed.";
     OMSI_PROFILE_GPU: Bool, Debug, Use, "off", "Profile: wait for the GPU so its time shows as a stage of its own.";
-    OMSI_PROFILE_JSON: Text, Debug, Use, "-", "With OMSI_PROFILE and --exit-after: the exit summary (after the 15 s warm-up) as JSON into this file, see scripts/compare-performance.py.";
+    OMSI_PROFILE_JSON: Text, Debug, Use, "-", "With OMSI_PROFILE: the session summary written after --exit-after or when the game is closed (after the 15 s warm-up) as JSON into this file, see scripts/compare-performance.py.";
     OMSI_PUDDLE_F0: Num, Tuning, Use, "0.08", "Puddle reflectance at normal incidence (0.02 to 0.2).";
     OMSI_PUDDLE_THICKNESS: Num, Tuning, Use, "0.12", "Puddle water film thickness.";
     OMSI_REALISTIC_ROAD: Bool, Switch, Use, "off", "The setting \"Realistic road physics\" on for this run (A/B against the OMSI 2 model: slip-angle tyres, surfaces, road roughness, wind).";

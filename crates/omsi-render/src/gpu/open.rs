@@ -117,7 +117,7 @@ impl Renderer {
         };
         // a small or shared graphics chip gets a lighter picture (see `lighter_picture`)
         GL_BACKEND.store(info.backend == wgpu::Backend::Gl, std::sync::atomic::Ordering::Relaxed);
-        let (options, lighter) = gpu_memory::lighter_picture(&info, vram, options);
+        let options = gpu_memory::lighter_picture(&info, vram, options);
         let most = gpu_memory::ceiling(&info, vram);
         *CEILING.lock().unwrap_or_else(|e| e.into_inner()) = Some(if intel_vulkan_safe { gpu_memory::Ceiling { msaa: 1, ssao: false, shadow_size: most.shadow_size.min(2048), ..most } } else { most });
         let shadow_size = options
@@ -239,11 +239,15 @@ impl Renderer {
                 label: Some("omsi"),
                 required_features,
                 required_limits: limits,
-                // (a card of up to 4 GB gets the allocator's small blocks: the large ones
-                // left hundreds of MB reserved and unused, and 2 GB cards lost the device to
-                // "Out of memory" in the first frames with the textures well under budget,
-                // #332, #295)
-                memory_hints: if lighter || vram.is_some_and(|v| v <= 4200) { wgpu::MemoryHints::MemoryUsage } else { wgpu::MemoryHints::Performance },
+                // (the allocator's small blocks, 8-64 MB, for every card: a block goes back
+                // to the driver only once it is empty, and with the scenery's thousands of
+                // textures coming and going a 128-256 MB block of the performance hint hardly
+                // ever was. They left hundreds of MB reserved and unused, 2 GB cards lost the
+                // device to "Out of memory" in the first frames with the textures well under
+                // budget, #332, #295, and a 12 GB card held 13 GB in 63 blocks for 8 GB of
+                // textures and buffers and paged, #2295. A few hundred blocks are well under
+                // a driver's allocation limit, NVIDIA's 4096.)
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
                 // (the ray queries are still an experimental feature of wgpu)
                 experimental_features: if ray_query { unsafe { wgpu::ExperimentalFeatures::enabled() } } else { wgpu::ExperimentalFeatures::disabled() },
                 ..Default::default()

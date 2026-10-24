@@ -305,6 +305,25 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
   go; the roads are drawn in a few strokes instead of one per road. Around the map's tiles
   the land has the map's own green, no more grey that looked as if it were still loading.
 
+**Launcher**
+
+- **The timetable editor works on the map**, as Drive does: every stop of the timetable stands on
+  the map (the depots as amber squares), a stop clicked says which trips call there and puts one
+  into the tour, and a stop found by name flies the map to it. A new trip is made by clicking its
+  stops: only the stops the map has a station link to are ringed, the route it would drive is drawn
+  as they are chosen, and it is saved as a `.ttp` beside the line (the changed trip of a stop list
+  is saved as a new one, so the map's own stay as they are). The tours show their trips with a
+  departure field and a minute up and down; copies, repeats and the reset moved into small menus.
+- The route preview no longer runs doubled: the timetable lists the lanes of a road side by side
+  (three lanes of the same stretch, one after another), which were all drawn, and a change of
+  lane showed as a step sideways. The route is one line now, with a smooth curve over where it
+  changes lane, as the game's own map draws it.
+- No text of the launcher is set in capitals any more (the section titles, the menu's groups, the
+  destination sign); the stops under a trip in the roadbook have a rail and dots of their own
+  that no longer run over their times, a trip's depot-run label no longer sits on its stops, the
+  panels of the Drive page keep their width on a small window, and the menu folds to its icons
+  on a narrow one.
+
 **Trams, metros and trains** ([docs/RAIL.md](docs/RAIL.md))
 
 - Rail vehicles have a class (tram, metro, train), from `[rail_class]` in their file or from
@@ -587,6 +606,15 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
   500 MB was dropped. A texture memory set before (and OMSI's `texmemlimit`) was a texture
   budget and is not carried over: the video memory starts on Automatic. After a lost graphics
   device the safer settings take two thirds of what the card holds, not a fixed 800 MB.
+- **The frame rate no longer collapses after half an hour on DirectX 12 and Vulkan:** the game
+  kept its own total under the video memory setting while the card filled up anyway - the room
+  wgpu's allocator keeps free in its 128-256 MB blocks was left out of the bound, and a block
+  goes back to the driver only once it is empty. Far textures made smaller left holes, the
+  textures coming back needed bigger ones, so new blocks opened: on a 12 GB card set to 6 GB the
+  driver held 11.5 GB after 18 minutes (5.7 GB of it holes), the card paged, 10 fps. The holes
+  now count against the bound, so textures come back only into room the card really has, and
+  every card gets the allocator's small blocks (8-64 MB), which empty and go back to the driver
+  ([#2295](https://github.com/openOMSI-org/openOMSI/issues/2295)).
 - **Rain on the windows costs less:** the drops on the cab's panes are painted beside the
   frame instead of while it waits, and only the rows that changed go to the graphics card (12
   panes sent a megabyte each, 30 times a second). In heavy rain in the cab, on a Radeon 680M,

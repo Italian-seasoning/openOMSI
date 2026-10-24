@@ -41,7 +41,7 @@ function Sidebar() {
   const installing = s.poll.jobs?.filter(jobRunning).length || 0;
   const p = s.profile;
   const name = s.config?.profile || '';
-  const [icons, setIcons] = useState(() => remembered('sidebar', 'full') === 'icons');
+  const [icons, setIcons] = useState(() => remembered('sidebar', window.innerWidth < 1380 ? 'icons' : 'full') === 'icons');
   const flip = () => {
     setIcons(!icons);
     remember('sidebar', icons ? 'full' : 'icons');

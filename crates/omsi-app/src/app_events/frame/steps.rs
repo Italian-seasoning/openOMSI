@@ -121,8 +121,8 @@ pub(crate) fn set_keep_clear(t: &mut traffic::Traffic, player: Option<&Player>, 
     );
 }
 
-/// The timetable puts out its departures: at the start the trips that left within the last
-/// 20 minutes (`first`), then those of the next moments.
+/// The timetable puts out its departures: at the start (`first`) every trip still under way
+/// and those that left within the last 20 minutes, then those of the next moments.
 pub(crate) fn schedule_tick(
     s: &mut schedule::Schedule,
     world: &World,

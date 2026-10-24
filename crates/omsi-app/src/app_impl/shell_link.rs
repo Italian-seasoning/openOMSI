@@ -23,6 +23,8 @@ pub(crate) fn rail_of(kind: &ListKind, camera_tab: bool) -> Option<&'static str>
         | ListKind::ControllerCapture(_)
         | ListKind::Events => "controls",
         ListKind::World(_) => "world",
+        ListKind::SaveSlots => "saveslot",
+        ListKind::PlayerList | ListKind::PlayerPage(..) | ListKind::PlayerDo(..) | ListKind::BanList => "players",
         ListKind::Lines | ListKind::Tours(..) => "duty",
         ListKind::Admin | ListKind::AdminPlayers | ListKind::AdminPlayer(_) | ListKind::AdminConfirm(..) | ListKind::AdminClassic => "admin",
         _ => "vehicle",
@@ -84,6 +86,7 @@ impl App {
             paused: self.paused,
             rail: &rail,
             rail_sel: self.menus.game_menu,
+            disabled: self.menu_disabled_ids(),
             rail_open: self.menus.list_kind.as_ref().and_then(|k| rail_of(k, camera_tab)).filter(|_| self.menus.chooser.is_some()),
             list,
             kbd: self.menus.menu_kbd,
@@ -128,6 +131,11 @@ impl App {
                     }
                     self.menu_choose(event_loop, k);
                 }
+                Action::PauseCategory(category) => {
+                    if self.menus.game_menu.is_some() {
+                        self.switch_pause_category(category);
+                    }
+                }
                 Action::Rail(k) => {
                     self.close_list();
                     if k != usize::MAX && self.menus.game_menu.is_some() {
@@ -148,5 +156,17 @@ impl App {
                 Action::Photo(r) => self.photo_request(r),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod pause_navigation_tests {
+    use super::*;
+
+    #[test]
+    fn pause_navigation_player_lists_keep_the_online_category() {
+        assert_eq!(rail_of(&ListKind::PlayerList, false), Some("players"));
+        assert_eq!(rail_of(&ListKind::BanList, false), Some("players"));
+        assert_eq!(rail_of(&ListKind::SaveSlots, false), Some("saveslot"));
     }
 }

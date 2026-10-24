@@ -876,7 +876,7 @@ much of the graphics card the game may use in all (textures, models and the pict
 textures and tiles that give everything back when they unload.
 
 For measuring: `OMSI_PROFILE=1` logs the time each stage of the frame takes, and with
-`--exit-after N` (quit after N seconds) it writes a summary at the end - frame-time
+`--exit-after N` (quit after N seconds), or when you close the game, it writes a summary at the end - frame-time
 percentiles and the number of frames over 16.7, 33.3, 50 and 100 ms, counted from 15 s
 after the map has loaded. `OMSI_PROFILE_JSON=<file>` also writes the summary to a file.
 
