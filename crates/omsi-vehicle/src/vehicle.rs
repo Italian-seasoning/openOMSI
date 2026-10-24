@@ -219,6 +219,8 @@ pub struct Vehicle {
     pub rail_traction: Option<crate::rail_spec::RailTraction>,
     pub rail_brake: Option<crate::rail_spec::RailBrake>,
     pub rail_coupler: Option<crate::rail_spec::RailCoupler>,
+    /// `[rail_power]`: where the vehicle gets its current (`Auto`: from its shape).
+    pub rail_power: crate::rail_spec::PowerKind,
     pub attachments: Vec<Attachment>,
     pub coupling_front: Option<Coupling>,
     pub coupling_back: Option<Coupling>,
@@ -566,6 +568,7 @@ impl Vehicle {
                 "contact_shoe" => v.contact_shoes.push(r.f32s::<6>()),
                 "ai_brakeperformance" => v.ai_brake_performance = Some(r.f32s::<5>()),
                 "fixed" => v.fixed = true,
+                "rail_power" => v.rail_power = crate::rail_spec::PowerKind::from_name(r.str()),
                 "rail_traction" => v.rail_traction = Some(crate::rail_spec::RailTraction::parse(&r.rest_of_block())),
                 "rail_brake" => v.rail_brake = Some(crate::rail_spec::RailBrake::parse(&r.rest_of_block())),
                 "rail_coupler" => v.rail_coupler = Some(crate::rail_spec::RailCoupler::parse(&r.rest_of_block())),

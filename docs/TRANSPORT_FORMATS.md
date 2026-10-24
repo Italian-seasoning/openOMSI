@@ -27,6 +27,17 @@ A worked example is in `docs/examples/transport-metro/`.
 | `depots.cfg` | depots | [Depots](#depotscfg) |
 | `signals.cfg` | signals and blocks | [Signals](#signalscfg) |
 
+## What the game does with each file
+
+| File | Used by the game for |
+| --- | --- |
+| `network.cfg` | the class (tram, metro, railway), street or mainline, third rail, tunnel and speed limit of the rail lanes it matches, after `openomsi-rail.cfg` (which still works) |
+| `stations.cfg`, `routes.cfg` | the lines, tours and trips of the timetable, routed over the map's network (see below); the stops, the departure boards, the IBIS |
+| `catenary.cfg`, `thirdrail.cfg` | the current of the player's rail vehicle: a pantograph needs a live section of wire under it, a shoe a live section of rail beside it, and a sagging line weakens the motors (a vehicle says `[rail_power]` `catenary`, `third_rail` or `diesel`; else a contact shoe means third rail and a pantograph overhead wire). A map without the file takes the current for granted. AI vehicles are not powered by the line yet |
+| `switches.cfg` | the speed limit of the diverging branch (`diverging_speed` with `object`, `tile`, `diverging_path`); the other keys (kind, default, drive, locked_by) are read and checked, and not yet acted on |
+| `depots.cfg` | the `ai_group` of a service's depot supplies its vehicles; gates, capacity and pull-out runs are read, checked and not yet acted on |
+| `signals.cfg` | read and checked; blocks and signals do not yet hold AI trains |
+
 ## routes.cfg
 
 Routes need no tours. A **route** is a set of **segments**: a run from one station to another

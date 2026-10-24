@@ -11,6 +11,9 @@
 //! regen_point 10 60   // km/h  kN: the electric brake (repeat); none: no electric brake
 //! regen_point 80 60
 //!
+//! [rail_power]
+//! catenary            // catenary | third_rail | diesel: where the current comes from
+//!
 //! [rail_brake]
 //! type air            // air | ep | direct
 //! service 1.1         // m/s², full service application (default: the class's)
@@ -27,6 +30,30 @@
 //! damping 80          // kN s/m
 //! max_force 900       // kN, beyond it the train breaks in two
 //! ```
+
+/// Where a rail vehicle gets its current.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PowerKind {
+    /// Worked out from the vehicle: a `[contact_shoe]` takes it from a third rail, a pantograph
+    /// the file declares from the overhead wire, otherwise it needs none.
+    #[default]
+    Auto,
+    Catenary,
+    ThirdRail,
+    /// Carries its own power (diesel, battery): no line needed.
+    OnBoard,
+}
+
+impl PowerKind {
+    pub fn from_name(s: &str) -> PowerKind {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "catenary" | "overhead" | "wire" | "pantograph" => PowerKind::Catenary,
+            "third_rail" | "thirdrail" | "third rail" | "shoe" => PowerKind::ThirdRail,
+            "diesel" | "battery" | "onboard" | "none" => PowerKind::OnBoard,
+            _ => PowerKind::Auto,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RailTraction {

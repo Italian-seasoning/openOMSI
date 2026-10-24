@@ -206,3 +206,19 @@ max_force 900       // kN: beyond it the train breaks in two
   (the log says so, and the brakes come on).
 
 `OMSI_DEBUG_RAIL=1` logs the drive and the brake of a vehicle twice a second.
+
+### Current
+
+A rail vehicle can say where it gets its current:
+
+```
+[rail_power]
+catenary            // catenary | third_rail | diesel (carries its own power)
+```
+
+Left out, a `[contact_shoe]` means third rail, a declared pantograph overhead wire, anything else
+no line. On a map whose `transport` folder has a `catenary.cfg` or `thirdrail.cfg`
+([TRANSPORT_FORMATS.md](TRANSPORT_FORMATS.md)) the player's vehicle moves only where its collector
+finds a live section (the pantograph within 2.5 m of the wire, a shoe within 1.2 m of the rail, not in
+a break), and its drive weakens below 80 % of the nominal voltage and is gone at 50 %. The brakes
+always work. A map without the file is as before: the pantograph's switch alone decides.

@@ -255,6 +255,10 @@ pub struct Switch {
     pub drive: Drive,
     pub diverging_speed: Option<f32>,
     pub locked_by: Option<String>,
+    /// The tile of the object and the paths of it that are the diverging branches: where the
+    /// speed limit of `diverging_speed` applies.
+    pub tile: Option<(i32, i32)>,
+    pub diverging_paths: Vec<u16>,
     pub line: usize,
 }
 
@@ -392,8 +396,16 @@ impl Switches {
                 drive,
                 diverging_speed: b.speed("diverging_speed"),
                 locked_by: b.get("locked_by").map(|s| s.trim().to_string()),
+                tile: b.get("tile").and_then(|v| {
+                    let n: Vec<i32> = v.split_whitespace().filter_map(|w| w.parse().ok()).collect();
+                    (n.len() == 2).then(|| (n[0], n[1]))
+                }),
+                diverging_paths: b.all("diverging_path").flat_map(|e| e.value.split_whitespace().filter_map(|w| w.parse().ok()).collect::<Vec<u16>>()).collect(),
                 line: b.line,
             };
+            if sw.diverging_speed.is_some() && sw.diverging_paths.is_empty() {
+                is.warn(b.line, format!("switch {}: diverging_speed needs diverging_path (and tile) to say which branch it limits", sw.id));
+            }
             if sw.object.is_none() && sw.pos.is_none() {
                 is.error(b.line, format!("switch {} needs object or pos", sw.id));
             }
@@ -531,12 +543,13 @@ mod tests {
     #[test]
     fn switches_depots_signals() {
         let mut issues = Vec::new();
-        let sw = Switches::parse("[switch]\nid W1\nmodes tram railway\nkind scissors\nobject 5\nbranches 3\ndefault diverging\ndrive interlocked\ndiverging_speed 25 km/h\nlocked_by S1\n", "switches.cfg", &mut issues);
+        let sw = Switches::parse("[switch]\nid W1\nmodes tram railway\nkind scissors\nobject 5\ntile 3 4\ndiverging_path 1\ndiverging_path 2\nbranches 3\ndefault diverging\ndrive interlocked\ndiverging_speed 25 km/h\nlocked_by S1\n", "switches.cfg", &mut issues);
         let d = Depots::parse("[depot]\nid D\nmodes tram\ncapacity 20\nai_group G\ngate 1 2 3\nturning_loop yes\n", "depots.cfg", &mut issues);
         let sg = Signals::parse("[signal]\nid S1\nmodes railway\nkind distant\nblock B1\n[block]\nid B1\nmodes railway\nlength 850 m\nnext B2\n[block]\nid B2\nmodes railway\nlength 1 km\n", "signals.cfg", &mut issues);
         assert!(issues.is_empty(), "{issues:?}");
         let w = sw.get("w1").unwrap();
         assert_eq!((w.kind, w.drive, w.branches, w.default_diverging), (SwitchKind::Scissors, Drive::Interlocked, 3, true));
+        assert_eq!((w.tile, w.diverging_paths.clone()), (Some((3, 4)), vec![1, 2]));
         assert!(d.list[0].turning_loop && d.list[0].gates.len() == 1);
         assert_eq!(sg.blocks[1].length_m, 1000.0);
         assert_eq!(sg.signals[0].kind, SignalKind::Distant);

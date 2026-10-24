@@ -13,9 +13,38 @@ pub struct RailEnv {
     /// Radius of the curve under it (m), infinite on the straight.
     pub radius: f32,
     pub in_tunnel: bool,
+    /// What a pantograph finds under it and what a third-rail shoe finds beside it, where the
+    /// map has a `catenary.cfg` / `thirdrail.cfg` (else `None`: nothing is known and the
+    /// current is taken for granted, as on every map before the files existed).
+    pub wire: Option<omsi_transit::Supply>,
+    pub third_rail: Option<omsi_transit::Supply>,
 }
 
 impl VehicleInstance {
+    /// Where this vehicle gets its current, from its file or its shape.
+    pub fn rail_power_kind(&self) -> omsi_vehicle::rail_spec::PowerKind {
+        use omsi_vehicle::rail_spec::PowerKind;
+        let d = &self.ty.def;
+        match d.rail_power {
+            PowerKind::Auto if !d.contact_shoes.is_empty() => PowerKind::ThirdRail,
+            PowerKind::Auto if pantograph_binds(d) => PowerKind::Catenary,
+            PowerKind::Auto => PowerKind::OnBoard,
+            k => k,
+        }
+    }
+
+    /// What the vehicle's collector finds on its line now: `None` where it needs no line or the
+    /// map says nothing of one.
+    pub fn rail_supply(&self) -> Option<omsi_transit::Supply> {
+        use omsi_vehicle::rail_spec::PowerKind;
+        let env = self.rail_env?;
+        match self.rail_power_kind() {
+            PowerKind::Catenary => env.wire,
+            PowerKind::ThirdRail => env.third_rail,
+            _ => None,
+        }
+    }
+
     /// The track the vehicle runs on, or `None` for a road vehicle: its speed then comes from
     /// the rail dynamics, not from the road tyres.
     pub fn set_rail_env(&mut self, env: Option<RailEnv>) {
@@ -85,7 +114,9 @@ impl VehicleInstance {
         let from_scripts = self.rail_script_forces(m_wheel, brakes);
         // no current, no drive in either direction (the brakes still work)
         let powered = self.rail_powered();
-        let from_scripts = from_scripts.map(|f| without_current(f, powered));
+        // (a sagging line weakens the motors)
+        let sag = self.rail_supply().map_or(1.0, |s| s.drive_factor());
+        let from_scripts = from_scripts.map(|f| without_current(Forces { drive: f.drive * sag, ..f }, powered));
         if let Some(f) = from_scripts {
             self.note_traction_current(f.drive, v0);
         }
@@ -96,7 +127,8 @@ impl VehicleInstance {
         } else {
             let reverse = self.var("rail_reverse").is_some_and(|r| r > 0.5);
             let pedals = rail::dynamics::pedal_forces(class, consist.mass, c.throttle, c.brake, v0, reverse);
-            without_current(self.rail_declared_forces(class, &consist, pedals, c.throttle, c.brake, v0, reverse, dt), powered)
+            let f = self.rail_declared_forces(class, &consist, pedals, c.throttle, c.brake, v0, reverse, dt);
+            without_current(Forces { drive: f.drive * sag, ..f }, powered)
         };
         let mut out = rail::step(&consist, &cond, &forces, v0, dt);
         if let Some(peak) = self.rail_couplers(&consist, &forces, &out, v0, dt) {
@@ -253,12 +285,11 @@ impl VehicleInstance {
     /// Whether the vehicle's drive has current: a rail vehicle with a pantograph moves only with
     /// it raised.
     pub fn rail_powered(&self) -> bool {
-        if !pantograph_binds(&self.ty.def) {
-            return true;
-        }
         // the pantograph as the wire sees it: raised AND touching a live wire. Where its travel
         // could not be measured the variable alone says (raised: 1).
-        self.pantograph_current().unwrap_or_else(|| self.pantograph_raised().unwrap_or(true))
+        let pantograph = !pantograph_binds(&self.ty.def) || self.pantograph_current().unwrap_or_else(|| self.pantograph_raised().unwrap_or(true));
+        // and, where the map has a line, the line has current where the collector is
+        pantograph && self.rail_supply().is_none_or(|s| s.live())
     }
 
     /// What the rail dynamics made of the last step (spinning or sliding wheels, resistance).

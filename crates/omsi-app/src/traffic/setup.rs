@@ -44,7 +44,11 @@ impl Traffic {
         }
         net.link(1.5);
         // which rail lane is tram track, railway or metro, and how fast its curves allow
-        let rail_lanes = omsi_sim::rail::classify(&mut net, &omsi_sim::rail::RailMapConfig::load(&world.map_dir));
+        let rail_lanes = omsi_sim::rail::classify(&mut net, &{
+            let mut cfg = omsi_sim::rail::RailMapConfig::load(&world.map_dir);
+            cfg.add_transit(&world.transit);
+            cfg
+        });
         if rail_lanes > 0 {
             let of = |c: omsi_sim::rail::TrackClass| net.lanes.iter().filter(|l| l.track.is_some_and(|t| t.class == c)).count();
             log::info!("rail: {rail_lanes} rail lanes ({} in the street, {} railway)", of(omsi_sim::rail::TrackClass::Street), of(omsi_sim::rail::TrackClass::Mainline));

@@ -418,7 +418,7 @@ impl RailDrive {
 
     /// What the track under the vehicle is like for its dynamics: the grade in the direction
     /// the vehicle faces, the radius of the curve and whether it is in a tunnel.
-    pub(crate) fn env(&self, net: &Network) -> omsi_sim::vehicle::RailEnv {
+    pub(crate) fn env(&self, net: &Network, supply: (Option<omsi_transit::Supply>, Option<omsi_transit::Supply>)) -> omsi_sim::vehicle::RailEnv {
         let lane = &net.lanes[self.lane];
         let len = lane.length();
         // the rise over 10 m of this lane (the two ends of a lane are joined by `step`, so a
@@ -434,6 +434,8 @@ impl RailDrive {
             grade: grade.clamp(-0.2, 0.2),
             radius: if k > 1e-4 { 1.0 / k } else { f32::INFINITY },
             in_tunnel: lane.track.is_some_and(|t| t.tunnel) || ["tunnel", "tunel", "subway", "ubahn", "u-bhf", "u_bhf", "metro"].iter().any(|t| name.contains(t)),
+            wire: supply.0,
+            third_rail: supply.1,
         }
     }
 
@@ -507,7 +509,12 @@ pub(crate) fn frame(p: &mut Player, net: Option<&Network>, world: &World, scener
     // AI only - against the resistance of the rails, the weight on the slope and the adhesion
     // of wheel on rail. The speed they make is the distance covered below.
     if let Some(r) = p.rail.as_ref() {
-        let env = r.env(net);
+        // where the current is, when the map's `transport` folder says (a pantograph under the
+        // vehicle's middle, a shoe at its side)
+        let at = p.vehicle.position;
+        let place = [at.x, at.y, at.z];
+        let supply = (world.transit.catenary.as_ref().and_then(|e| e.supply_at(place)), world.transit.third_rail.as_ref().and_then(|e| e.supply_at(place)));
+        let env = r.env(net, supply);
         p.vehicle.set_rail_env(Some(env));
         if omsi_sim::rail::realistic() {
             let wire = r.catenary(net, &p.vehicle);

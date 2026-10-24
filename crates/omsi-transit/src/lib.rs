@@ -17,6 +17,7 @@
 pub mod doc;
 pub mod electric;
 pub mod infra;
+pub mod power;
 pub mod routes;
 pub mod stations;
 
@@ -25,6 +26,7 @@ use omsi_cfg::transport::ModeSet;
 use std::path::Path;
 
 pub use electric::Electrification;
+pub use power::Supply;
 pub use infra::{Depots, Network, Signals, Switches};
 pub use routes::Routes;
 pub use stations::Stations;
