@@ -5,6 +5,7 @@
 //! window around the page can do - its events, stepping aside while a game runs, drawing with
 //! the game's renderer - it is asked through `Platform`.
 
+mod addons;
 pub mod i18n;
 mod timetable;
 mod updates;
@@ -841,6 +842,7 @@ fn answer(cmd: &str, args: &Value, p: &dyn Platform) -> Answer {
         "ai_lists" => core::ai_lists::view(&arg::<String>(args, "map")?, &arg::<String>(args, "date")?).map_err(err),
         "ai_lists_save" => core::ai_lists::save(&arg::<String>(args, "map")?, &arg::<String>(args, "date")?, &arg::<Vec<core::ai_lists::GroupJson>>(args, "groups")?, &arg::<Vec<core::ai_lists::RuleJson>>(args, "rules")?).map_err(err),
         "ai_lists_reset" => core::ai_lists::reset(&arg::<String>(args, "map")?).map(|_| json!({})).map_err(err),
+        "addons" => addons::list(),
         "timetable" => timetable::load(arg::<String>(args, "map")?),
         "timetable_save" => timetable::save(arg::<String>(args, "map")?, arg::<Vec<timetable::LineEdit>>(args, "lines")?),
         "timetable_reset" => timetable::reset(arg::<String>(args, "map")?),

@@ -11,6 +11,7 @@ import { call } from '../api.js';
 import { Icon } from '../icons.js';
 import { Button, Dialog, Empty, Notice, Search, Segmented, Select, Slider, Spinner, Tag, useConfirm } from '../ui.js';
 import { BusPreview } from '../preview.js';
+import { listsModel } from './ai-lists-model.js';
 
 const ai = () => S.ai;
 const up = (patch) => set({ ai: { ...S.ai, ...patch } });
@@ -56,52 +57,16 @@ async function readLibrary() {
   }
 }
 
-async function read(map, date) {
-  up({ map, loaded: null, data: null, error: null });
-  try {
-    const data = await call('ai_lists', { map, date });
-    const groups = data.groups.map(({ random, modified, ...g }) => g);
-    // (what a group is on the map: every group is named by its kind and name)
-    up({ loaded: `${map}|${date}`, data, groups: clone(groups), saved: clone(groups), rules: clone(data.lines.filter((l) => l.rule).map((l) => l.rule)), savedRules: clone(data.lines.filter((l) => l.rule).map((l) => l.rule)), pick: null });
-  } catch (e) {
-    up({ loaded: `${map}|${date}`, error: String(e.message || e) });
-  }
-}
+const { read, save, reset: resetMap, change } = listsModel({ call, get: ai, up, toast, t });
 
 const dirty = (a) => JSON.stringify(a.groups) !== JSON.stringify(a.saved) || JSON.stringify(a.rules) !== JSON.stringify(a.savedRules);
-
-async function save() {
-  const a = ai();
-  up({ busy: true });
-  try {
-    const r = await call('ai_lists_save', { map: a.map, date: a.date, groups: a.groups, rules: a.rules });
-    toast(r.groups + r.rules > 0 ? t('Saved. The next game you start uses these lists.') : t('Saved: the map has its own lists again.'), 'ok');
-    await read(a.map, a.date);
-  } catch (e) {
-    toast(String(e.message || e), 'error');
-  }
-  up({ busy: false });
-}
-
-async function resetMap() {
-  const a = ai();
-  up({ busy: true });
-  try {
-    await call('ai_lists_reset', { map: a.map });
-    toast(t('The map has its own lists again.'), 'ok');
-    await read(a.map, a.date);
-  } catch (e) {
-    toast(String(e.message || e), 'error');
-  }
-  up({ busy: false });
-}
 
 const setGroup = (g, fn) => {
   const groups = clone(ai().groups);
   const i = groups.findIndex((x) => key(x) === key(g));
   if (i < 0) return;
   fn(groups[i]);
-  up({ groups });
+  change({ groups });
 };
 
 const modified = (g) => {
@@ -112,7 +77,7 @@ const modified = (g) => {
 const resetGroup = (g) => {
   const was = ai().data?.defaults.find((d) => key(d) === key(g));
   if (!was) return;
-  up({ groups: ai().groups.map((x) => (key(x) === key(g) ? clone(was) : x)) });
+  change({ groups: ai().groups.map((x) => (key(x) === key(g) ? clone(was) : x)) });
 };
 
 /** The next fleet number of a depot: one above the largest number there. */
@@ -307,7 +272,7 @@ function setRule(line, patch) {
     if (i >= 0) rules.splice(i, 1);
   } else if (i >= 0) rules[i] = { ...rules[i], ...patch };
   else rules.push({ line: line.name, mode: 'only', factor: 1, types: [], ...patch });
-  up({ rules });
+  change({ rules });
 }
 
 function LinesTab() {
@@ -355,6 +320,7 @@ function LinesTab() {
 
 function onPick(v) {
   const a = ai();
+  if (a.busy) return;
   const p = a.pick;
   const groups = clone(a.groups);
   const g = p.group && groups.find((x) => key(x) === key(p.group));
@@ -376,10 +342,10 @@ function onPick(v) {
       const added = p.line.groups.filter((n) => ensureInDepot(groups, n, v.file));
       if (added.length) toast(t('{type} was added to {depot}, with a few buses.', { type: v.name, depot: added.join(', ') }), 'info');
     }
-    up({ groups, rules, pick: null });
+    change({ groups, rules, pick: null });
     return;
   }
-  up({ groups, pick: null });
+  change({ groups, pick: null });
 }
 
 export function AiListsPage() {
@@ -391,7 +357,7 @@ export function AiListsPage() {
   const want = a.map && maps.some((m) => m.file === a.map) ? a.map : maps.find((m) => m.file === s.choice?.map)?.file || maps[0]?.file;
   const [ask, confirm] = useConfirm();
   useEffect(() => {
-    if (want && a.loaded !== `${want}|${date}` && !a.busy) {
+    if (want && a.loaded !== `${want}|${date}` && a.loading !== `${want}|${date}` && !a.busy) {
       S.ai.date = date;
       read(want, date);
     }
@@ -403,10 +369,10 @@ export function AiListsPage() {
   const d = a.data;
   const changed = d && dirty(a);
   const pk = a.pick;
-  return html`<div class="ail">
+  return html`<div class=${'ail' + (a.busy ? ' busy' : '')} inert=${a.busy || undefined}>
     <p class="dim">${t("Choose which AI cars and buses a map's traffic is made of, and which buses run on which line. You choose from the vehicles you have installed; nothing new is added, and the map's own lists stay as they are.")}</p>
     <div class="ail-bar">
-      <div style="min-width:240px;flex:1;max-width:420px"><${Select} value=${want} raw options=${maps.map((m) => [m.file, m.name])} onChange=${(f) => !changed && up({ map: f, loaded: null })} disabled=${changed} /></div>
+      <div style="min-width:240px;flex:1;max-width:420px"><${Select} value=${want} raw options=${maps.map((m) => [m.file, m.name])} onChange=${(f) => !changed && !a.busy && up({ map: f, loaded: null })} disabled=${changed || a.busy} /></div>
       <${Segmented} value=${a.tab} onChange=${(tab) => up({ tab })} options=${[['traffic', 'Traffic'], ['depot', 'Depot buses'], ['lines', 'Lines']]} />
       <div class="grow"></div>
       ${d?.edited && html`<${Tag}>${t('This map has your changes')}</${Tag}>`}
@@ -419,7 +385,7 @@ export function AiListsPage() {
     ${d && a.tab === 'depot' && html`<${DepotTab} />`}
     ${d && a.tab === 'lines' && html`<${LinesTab} />`}
     ${changed && html`<div class="ail-save"><span>${t('You have unsaved changes.')}</span>
-      <${Button} label="Discard" onClick=${() => up({ groups: clone(a.saved), rules: clone(a.savedRules) })} />
+      <${Button} label="Discard" onClick=${() => change({ groups: clone(a.saved), rules: clone(a.savedRules) })} />
       <${Button} kind="primary" icon="save" label="Save" disabled=${a.busy} onClick=${save} /></div>`}
     ${pk && html`<${Picker}
       title=${pk.kind === 'replace' ? 'Replace with' : pk.kind === 'rule' ? 'Add a type to the line' : pk.kind === 'add' ? 'Add a vehicle' : pk.kind === 'type' ? 'Replace the type with' : 'Add a type to the depot'}
