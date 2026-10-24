@@ -143,13 +143,19 @@ fn vs_rain(@builtin(vertex_index) vid: u32, @builtin(instance_index) k: u32) -> 
     // a drop right at the eye is a blur too wide and faint to see, not a streak
     let near = smoothstep(0.6, 1.6, length(p - camera.cam_pos.xyz));
     // the streak: from where the drop was against the eye a streak's time ago to where it is
-    let tail = p - (vel - rp.eye.xyz) * rp.eye.w;
     let ch = camera.view_proj * vec4<f32>(p, 1.0);
-    let ct = camera.view_proj * vec4<f32>(tail, 1.0);
-    let cu = camera.view_proj * vec4<f32>(p + camera.cam_up.xyz, 1.0);
-    if (in_own_vehicle(p) || under_roof(p, rp.roof, rp.roof_on.x) || min(ch.w, ct.w) < 0.1 || fade * near < 0.01) {
+    // (the field reaches all round the camera, most of it out of the picture: a drop well
+    // beyond its edge - a streak is a few per cent of the picture long - is let go before
+    // the rest of its work, and so is one too faint to see)
+    if (fade * near < 0.01 || ch.w < 0.1 || abs(ch.x) > 1.5 * ch.w || abs(ch.y) > 1.5 * ch.w) {
         return out;
     }
+    let tail = p - (vel - rp.eye.xyz) * rp.eye.w;
+    let ct = camera.view_proj * vec4<f32>(tail, 1.0);
+    if (ct.w < 0.1 || in_own_vehicle(p) || under_roof(p, rp.roof, rp.roof_on.x)) {
+        return out;
+    }
+    let cu = camera.view_proj * vec4<f32>(p + camera.cam_up.xyz, 1.0);
     let half_px = 0.5 * rp.view.xy;
     let sh = ch.xy / ch.w * half_px;
     let st = ct.xy / ct.w * half_px;
