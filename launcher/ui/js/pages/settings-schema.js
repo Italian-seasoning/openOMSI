@@ -451,7 +451,10 @@ const general = {
 /** Content test: no settings - the page draws the test itself (content-test.js). */
 const contentTest = { id: 'content', label: 'Content test', page: 'content', cols: [], when: (s, p) => !mobile(s, p) };
 
-export const SETTINGS_TABS = [graphics, driving, camera, sound, gameplay, general, contentTest];
+/** AI Lists: no settings - the page draws its own editor (ai-lists.js). */
+const aiLists = { id: 'ailists', label: 'AI Lists', page: 'ailists', cols: [], when: (s, p) => !mobile(s, p) };
+
+export const SETTINGS_TABS = [graphics, driving, camera, sound, gameplay, general, aiLists, contentTest];
 
 /** The settings a saved graphics profile holds (`GRAPHICS_PROFILE_KEYS`). */
 export const GRAPHICS_PROFILE_KEYS = [

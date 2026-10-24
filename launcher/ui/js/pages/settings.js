@@ -13,6 +13,7 @@ import { SETTINGS_TABS, GRAPHICS_PROFILE_KEYS } from './settings-schema.js';
 import { VersionsDialog } from './versions.js';
 import { RadioStations } from './radio-stations.js';
 import { ContentTest } from './content-test.js';
+import { AiListsPage } from './ai-lists.js';
 import { OptimiseBlock } from './optimise.js';
 
 const REPO_URL = 'https://github.com/openOmsi-project/openOMSI';
@@ -67,6 +68,8 @@ export function SettingsPage() {
     <${Tabs} value=${current.id} options=${tabs.map((x) => [x.id, x.label])} onChange=${pick} />
     ${current.page === 'content'
       ? html`<div key=${tab}><${ContentTest} /></div>`
+      : current.page === 'ailists'
+      ? html`<div key=${tab}><${AiListsPage} /></div>`
       : html`<div class="settings-grid" key=${tab}>
       ${current.cols.map((col) => html`<${Card} title=${col.title}>
         ${col.rows.filter((row) => visible(row, s.settings, platform)).map((row, i) => html`<${Row} key=${i + (row.key || row.id || row.label || row.title || '')} row=${row} ask=${ask} />`)}
