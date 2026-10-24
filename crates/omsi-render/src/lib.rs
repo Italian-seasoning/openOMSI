@@ -344,9 +344,9 @@ impl Default for RenderOptions {
             preview_only: false,
             ray_tracing: false,
             street_light: None,
-            light_shadows: 2,
-            cloud_shadows: true,
-            light_glow: true,
+            light_shadows: 1,
+            cloud_shadows: false,
+            light_glow: false,
             max_scene: None,
         }
     }

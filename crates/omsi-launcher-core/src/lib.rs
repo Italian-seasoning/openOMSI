@@ -2012,9 +2012,9 @@ pub fn effective_mode(v: &Value) -> &'static str {
 /// The Graphics settings' quality presets: Low, Medium, High, Extra, Max and Ultra, shared by the
 /// launcher and the game's options. A preset sets the graphics mode as well - Low is Vanilla (as
 /// OMSI 2 draws), Medium Vanilla+ (the defaults), High and above Enhanced - and, in Enhanced, how
-/// much of its light is switched on: High the street lamps' shadows and the clouds', Extra the
-/// street light and the reflections in full, Max every light's shadows and the mirrors drawn as the
-/// picture, Ultra Real-Time Ray Tracing on top of all of it. Each is a step up in cost and the
+/// much of its light is switched on: High the street lamps' shadows, Extra the clouds' shadow, the
+/// glow of lights, the street light and the reflections in full, Max every light's shadows and the
+/// mirrors drawn as the picture, Ultra Real-Time Ray Tracing on top of all of it. Each is a step up in cost and the
 /// light's own shadows (cached tiles, a handful of passes) are far from the dearest of them. The
 /// texture memory is left as it is.
 pub fn graphics_presets() -> [(&'static str, Value); 6] {
@@ -2042,9 +2042,17 @@ pub fn graphics_presets() -> [(&'static str, Value); 6] {
             "view_distance": view[i], "min_obj_size": obj_size[i], "max_obj_dist": obj_dist[i],
             "mirror_size": mirror[i], "mirror_refresh": refresh[i], "mirror_quality": mirror_quality[i], "render_scale": scale[i],
             "detail_textures": !low, "ssao": !low, "shadows": !low, "reflections": 1.0,
-            "light_shadows": light_shadows[i], "cloud_shadows": i >= 2 || i == 1, "light_glow": i >= 1,
+            "light_shadows": light_shadows[i], "cloud_shadows": i >= 3, "light_glow": i >= 3,
             "street_light": street_light[i], "puddles": puddles[i],
         });
+        let mut preset = preset;
+        // (Low is Vanilla, which draws none of these: it leaves them as they are, so that going back
+        // to Vanilla+ does not find them off)
+        if low {
+            for k in ["ssao", "shadows", "detail_textures"] {
+                preset.as_object_mut().map(|o| o.remove(k));
+            }
+        }
         (["Low", "Medium", "High", "Extra", "Max", "Ultra"][i], preset)
     })
 }
@@ -2134,8 +2142,8 @@ pub fn settings_from_text_on(text: Option<&str>, phone: bool) -> Value {
     v["street_light"] = json!("off");
     v["ray_tracing"] = json!(false);
     v["light_shadows"] = json!("street");
-    v["cloud_shadows"] = json!(true);
-    v["light_glow"] = json!(true);
+    v["cloud_shadows"] = json!(false);
+    v["light_glow"] = json!(false);
     v["puddles"] = json!("high"); // (apart: the literal above is at the json! macro's recursion limit)
     v["vehicle_smoke"] = json!("all");
     if phone {
@@ -2735,7 +2743,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
     text.push_str(&format!("gpu_texture_compression={}\n", b("gpu_texture_compression", true)));
     text.push_str(&format!("cloud_quality={}\n", cloud_quality(v.get("cloud_quality").and_then(|x| x.as_str()).unwrap_or("high"))));
     text.push_str(&format!("street_light={}\n", street_light(v.get("street_light").and_then(|x| x.as_str()).unwrap_or("off"))));
-    text.push_str(&format!("ray_tracing={}\nlight_shadows={}\ncloud_shadows={}\nlight_glow={}\n", b("ray_tracing", false) | (graphics_mode(v.get("graphics").and_then(|x| x.as_str()).unwrap_or("vanilla_plus")) == "enhanced_plus") as u8, light_shadows(v.get("light_shadows").and_then(|x| x.as_str()).unwrap_or("street")), b("cloud_shadows", true), b("light_glow", true)));
+    text.push_str(&format!("ray_tracing={}\nlight_shadows={}\ncloud_shadows={}\nlight_glow={}\n", b("ray_tracing", false) | (graphics_mode(v.get("graphics").and_then(|x| x.as_str()).unwrap_or("vanilla_plus")) == "enhanced_plus") as u8, light_shadows(v.get("light_shadows").and_then(|x| x.as_str()).unwrap_or("street")), b("cloud_shadows", false), b("light_glow", false)));
     text.push_str(&format!("rain_quality={}\n", rain_quality(v.get("rain_quality").and_then(|x| x.as_str()).unwrap_or("high"))));
     text.push_str(&format!("vehicle_smoke={}\n", vehicle_smoke(v.get("vehicle_smoke").and_then(|x| x.as_str()).unwrap_or("all"))));
     text.push_str(&format!("puddles={}\n", puddles(v.get("puddles").and_then(|x| x.as_str()).unwrap_or("high"))));

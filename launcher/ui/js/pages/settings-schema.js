@@ -113,7 +113,9 @@ const graphics = {
         { type: 'select', key: 'rain_quality', label: 'Rain quality', options: [['high', 'High'], ['medium', 'Medium'], ['low', 'Low']] },
         { type: 'select', key: 'vehicle_smoke', label: 'Vehicle smoke', options: [['all', 'All vehicles'], ['player', 'Player only'], ['off', 'Off']], help: 'Controls the vehicles\' smoke particles, not scenery effects or glowing particles.' },
         // (the wet roads' reflections need the reflection maps on)
-        { type: 'select', key: 'puddles', label: 'Real-Time Reflections', options: [['high', 'High'], ['low', 'Low'], ['off', 'Off']], when: (s) => Number(s.reflections ?? 1) > 0.005 },
+        // (the same setting, named for what Enhanced makes of it)
+        { type: 'select', key: 'puddles', label: 'Puddles', options: [['high', 'High'], ['low', 'Low'], ['off', 'Off']], when: (s) => !enhanced(s) && Number(s.reflections ?? 1) > 0.005 },
+        { type: 'select', key: 'puddles', label: 'Real-Time Reflections', options: [['high', 'High'], ['low', 'Low'], ['off', 'Off']], when: (s) => enhanced(s) && Number(s.reflections ?? 1) > 0.005 },
         { type: 'toggle', key: 'windy_trees', label: 'Windy trees' },
       ],
     },

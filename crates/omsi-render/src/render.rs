@@ -151,6 +151,13 @@ impl Renderer {
 
     /// The lightning strikes since the last call, as (seconds until the thunder is heard,
     /// distance in m, direction): the sound plays the thunder of what the picture showed.
+    /// Whether the lamps' shadow atlas holds the cube maps' tiles (made when the game started with
+    /// *Light has shadows: Every light*); without them that setting takes the street lamps' level
+    /// until the next start.
+    pub fn lamp_cube_maps(&self) -> bool {
+        self.shadows.lamp_atlas.has_cubes()
+    }
+
     pub fn take_strikes(&mut self) -> Vec<(f32, f32, [f32; 2])> {
         std::mem::take(&mut self.tone.lightning.strikes).into_iter().map(|s| (s.delay, s.distance, s.dir)).collect()
     }

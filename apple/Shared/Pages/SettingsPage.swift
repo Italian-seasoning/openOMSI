@@ -140,7 +140,7 @@ struct SettingsPage: View {
             }
             SettingSelect(label: "Vehicle smoke", key: "vehicle_smoke", options: [("all", "All vehicles"), ("player", "Player only"), ("off", "Off")], help: "Controls the vehicles' smoke particles, not scenery effects or glowing particles.")
             if (store.setting("reflections")?.double ?? 1) > 0.005 {
-                SettingSelect(label: "Real-Time Reflections", key: "puddles", options: [("high", "High"), ("low", "Low"), ("off", "Off")])
+                SettingSelect(label: enhanced ? "Real-Time Reflections" : "Puddles", key: "puddles", options: [("high", "High"), ("low", "Low"), ("off", "Off")])
             }
             SettingToggle(label: "Windy trees", key: "windy_trees", fallback: true)
         }

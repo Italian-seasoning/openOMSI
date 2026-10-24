@@ -258,7 +258,7 @@ fn enhanced_options_and_ray_tracing() {
     let plain = Settings::from_text("graphics=vanilla_plus\nray_tracing=1\n");
     assert!(!plain.ray_tracing() && !plain.render_options().ray_tracing && plain.mode() == "vanilla_plus");
     let d = Settings::default().render_options();
-    assert_eq!((d.light_shadows, d.cloud_shadows, d.light_glow, d.ray_tracing), (1, true, true, false));
+    assert_eq!((d.light_shadows, d.cloud_shadows, d.light_glow, d.ray_tracing), (1, false, false, false));
     assert_eq!(["off", "street", "all", "every", "x", "0"].map(|v| Settings::from_text(&format!("light_shadows={v}\n")).light_shadows), ["off", "street", "all", "all", "street", "off"]);
     // a file of the days of Enhanced+ is written back as Enhanced with ray tracing
     let old = Settings::from_text("graphics=enhanced_plus\n");

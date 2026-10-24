@@ -52,6 +52,32 @@ fn the_presets_rise_in_steps() {
     }
 }
 
+/// Low is Vanilla, which draws no ambient occlusion, sun shadows or detail grain: it leaves them as
+/// they are, so that a player who picks Low and goes back to Vanilla+ finds them on, and what is not
+/// graphics (the video memory) stays as it was.
+#[test]
+fn low_then_back_to_vanilla_plus_keeps_the_shadows() {
+    let low = &graphics_presets()[0].1;
+    for k in ["ssao", "shadows", "detail_textures"] {
+        assert!(low.get(k).is_none(), "{k}");
+    }
+    let mut v = settings_from_text(Some("graphics=vanilla_plus\nvideo_memory=3000\n"));
+    apply_graphics_profile(low, &mut v);
+    assert_eq!(effective_mode(&v), "vanilla");
+    let saved = settings_from_text(Some(&settings_to_text(&v, None)));
+    assert_eq!((&saved["shadows"], &saved["ssao"], &saved["detail_textures"], &saved["video_memory"]), (&json!(true), &json!(true), &json!(true), &json!(3000)));
+    let mut back = saved.clone();
+    apply_graphics_profile(&graphics_presets()[1].1, &mut back);
+    assert_eq!(effective_mode(&back), "vanilla_plus");
+    assert_eq!((&back["shadows"], &back["ssao"]), (&json!(true), &json!(true)));
+    // the options that cost most are off in the defaults and in every preset below Extra
+    let defaults = settings_from_text(None);
+    assert_eq!((&defaults["light_glow"], &defaults["cloud_shadows"], &defaults["light_shadows"]), (&json!(false), &json!(false), &json!("street")));
+    for (name, p) in &graphics_presets()[..3] {
+        assert_eq!((&p["light_glow"], &p["cloud_shadows"]), (&json!(false), &json!(false)), "{name}");
+    }
+}
+
 /// A file of the days of Enhanced+ (`graphics=enhanced_plus`) reads as Enhanced with ray tracing
 /// on, and is written that way.
 #[test]

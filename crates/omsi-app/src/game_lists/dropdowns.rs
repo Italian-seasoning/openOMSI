@@ -143,6 +143,9 @@ pub(crate) fn dropdown_apply(app: &mut App, action: &str) {
                 let before = app.settings.mirror_hud;
                 remember_setting(key, value);
                 reload_settings(app);
+                if key == "light_shadows" && value == "all" && app.renderer.as_ref().is_some_and(|r| !r.lamp_cube_maps()) {
+                    app.service_msg = Some((omsi_ui::tr("Takes effect when the game starts the next time").into_owned(), 5.0));
+                }
                 if key == "mirror_hud" && app.settings.mirror_hud != before {
                     if let Some(p) = app.player.as_ref() {
                         app.gfx.mirror_hud.apply_setting(p, app.settings.mirror_hud);

@@ -99,7 +99,7 @@ const SHAFT_REACH: f32 = 420.0;
 // how far the sky's gaps are followed (the haze beyond that is the table's, lit as a whole) and in
 // how many steps growing by a fixed ratio
 const SKY_SHAFT_REACH: f32 = 7000.0;
-const SKY_SHAFT_STEPS: u32 = 12u;
+const SKY_SHAFT_STEPS: u32 = 8u;
 
 // Whether the sun reaches a point in the air (1) or a house or a crown stands between (0).
 fn sun_reaches(x: vec3<f32>) -> f32 {

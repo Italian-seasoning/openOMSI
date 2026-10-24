@@ -12,6 +12,7 @@ fn renderer() -> Renderer {
             shadow_size: 1024,
             fxaa: false,
             render_scale: 1.0,
+            light_shadows: 2,
             ..Default::default()
         },
     ))

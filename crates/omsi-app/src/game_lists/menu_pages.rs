@@ -68,7 +68,7 @@ pub(super) fn options_pages(app: &App) -> Vec<Page> {
         switch_row(app, "cloud_shadows", "Cloud shadows and light shafts", "Enhanced: the clouds' shadow moving over the land and the sun's shafts through the gaps of a broken sky").filter(|_| shown("cloud_shadows")), switch_row(app, "light_glow", "Glow of lights", "Enhanced: the glare round bright lights and the lamps' halo in the night air").filter(|_| shown("light_glow")),
         pick("rain_quality", "Rain quality", "Lower is faster: the drops on the glass painted less often, less spray and fewer streaks; Low shows OMSI 2's own rain on the glass (from the next bus loaded)"),
         pick("vehicle_smoke", "Vehicle smoke", "Controls the vehicles' smoke particles, not scenery effects or glowing particles."),
-        pick("puddles", "Real-Time Reflections", "The wet roads' reflections in the rain: Low only near the bus and in fewer rays, much cheaper; Off none (the reflections on paint and glass stay)").filter(|_| app.settings.reflections > 0.0),
+        pick("puddles", if shown("ray_tracing") { "Real-Time Reflections" } else { "Puddles" }, "The wet roads' reflections in the rain: Low only near the bus and in fewer rays, much cheaper; Off none (the reflections on paint and glass stay)").filter(|_| app.settings.reflections > 0.0),
         switch_row(app, "windy_trees", "Windy trees", "The trees' leaves bend and sway in the wind and its gusts; with no wind they stand still"),
     ]
         .into_iter()

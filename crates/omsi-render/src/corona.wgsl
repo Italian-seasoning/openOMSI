@@ -51,8 +51,8 @@ struct CoronaOut {
 };
 
 // How many times wider than the light's own sprite the Enhanced picture draws a lamp's quad, for
-// the faint glare round it (`fs_enhanced`).
-const GLARE_K: f32 = 14.0;
+// the faint glare round it (`fs_enhanced`) - with *Glow of lights* on: 64 times the pixels.
+const GLARE_K: f32 = 8.0;
 // the glare's strength at the sprite's rim, against the lamp's core
 const GLARE_TAIL: f32 = 0.4;
 

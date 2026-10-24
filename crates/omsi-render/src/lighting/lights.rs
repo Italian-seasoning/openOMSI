@@ -232,6 +232,9 @@ pub(crate) struct LampAtlas {
     pub(crate) tile: u32,
     pub(crate) cols: u32,
     pub(crate) rows: u32,
+    /// How many tiles the rows hold: the forty-four of the world's, the vehicles' and the saloon's
+    /// lamps, or all fifty-six with the cube maps' twelve (`light_shadows` Every light).
+    pub(crate) tiles: usize,
 }
 
 impl LampAtlas {
@@ -243,12 +246,14 @@ impl LampAtlas {
     /// even those do not fit. `lamps` false - the plain pictures, which do not look the lamps'
     /// shadows up, and a phone's pipelines - leaves them out too: Vanilla and Vanilla+ keep the
     /// far map's own 1.25 times its width.
-    pub(crate) fn new(shadow_size: u32, lamps: bool, max_dim: u32) -> LampAtlas {
+    pub(crate) fn new(shadow_size: u32, lamps: bool, max_dim: u32, cube: bool) -> LampAtlas {
+        // (the cube maps' tiles come last: an atlas made without them is six rows, not seven)
+        let tiles = if cube { LAMP_SHADOWS } else { CUBE_SLOTS.start };
         let layout = |tile: u32| {
             let cols = (shadow_size / tile).max(1);
-            LampAtlas { shadow_size, tile, cols, rows: (LAMP_SHADOWS as u32).div_ceil(cols) }
+            LampAtlas { shadow_size, tile, cols, rows: (tiles as u32).div_ceil(cols), tiles }
         };
-        let none = LampAtlas { shadow_size, tile: 64, cols: 1, rows: 0 };
+        let none = LampAtlas { shadow_size, tile: 64, cols: 1, rows: 0, tiles: 0 };
         if !lamps {
             return none;
         }
@@ -273,10 +278,15 @@ impl LampAtlas {
         (col * self.tile, self.shadow_size + row * self.tile)
     }
 
+    /// Whether the cube maps' tiles are in it (what `light_shadows` Every light needs).
+    pub(crate) fn has_cubes(&self) -> bool {
+        self.tiles >= LAMP_SHADOWS
+    }
+
     /// What the camera uniform's `lamp_atlas` holds: a tile's side, tiles to a row, the
     /// texture's height and how many tiles there are.
     pub(crate) fn uniform(&self) -> [f32; 4] {
-        [self.tile as f32, self.cols as f32, self.height() as f32, if self.rows > 0 { LAMP_SHADOWS as f32 } else { 0.0 }]
+        [self.tile as f32, self.cols as f32, self.height() as f32, if self.rows > 0 { self.tiles as f32 } else { 0.0 }]
     }
 }
 
@@ -922,28 +932,32 @@ mod atlas_tests {
     #[test]
     fn the_lamp_tiles_take_seven_rows_of_an_eighth() {
         for (size, tile) in [(1024, 128), (2048, 256), (4096, 512), (8192, 512)] {
-            let a = LampAtlas::new(size, true, 16384);
+            let a = LampAtlas::new(size, true, 16384, true);
             assert_eq!((a.tile, a.cols), (tile, size / tile), "{size}");
             assert_eq!(a.rows, if size == 8192 { 4 } else { 7 }, "{size}");
             let last = a.origin(LAMP_SHADOWS - 1);
             assert!(last.0 + a.tile <= size && last.1 + a.tile <= a.height(), "{size}: the last tile lies in the texture");
         }
-        let a = LampAtlas::new(2048, true, 16384);
+        let a = LampAtlas::new(2048, true, 16384, true);
         assert_eq!(a.height(), 2048 + 7 * 256);
         assert_eq!(a.uniform(), [256.0, 8.0, 3840.0, LAMP_SHADOWS as f32]);
+        // without the cube maps' tiles - light_shadows off or street - it is the six rows of before
+        let a = LampAtlas::new(2048, true, 16384, false);
+        assert_eq!((a.rows, a.height(), a.has_cubes()), (6, 2048 + 6 * 256, false));
+        assert_eq!(a.uniform(), [256.0, 8.0, 3584.0, CUBE_SLOTS.start as f32]);
     }
 
     /// Vanilla and Vanilla+ have no tiles (the far map keeps its own height), a texture too low
     /// for them gets smaller tiles, and one too low for the smallest none.
     #[test]
     fn the_atlas_fits_the_texture_or_leaves_the_tiles_out() {
-        let plain = LampAtlas::new(2048, false, 16384);
+        let plain = LampAtlas::new(2048, false, 16384, true);
         assert_eq!((plain.rows, plain.height(), plain.uniform()[3]), (0, 2048, 0.0));
-        let low = LampAtlas::new(2048, true, 2600);
+        let low = LampAtlas::new(2048, true, 2600, true);
         assert!(low.rows > 0 && low.height() <= 2600 && low.tile < 256, "{low:?}");
-        let none = LampAtlas::new(2048, true, 2048);
+        let none = LampAtlas::new(2048, true, 2048, true);
         assert_eq!((none.rows, none.uniform()[3]), (0, 0.0));
         // a device that reads 4096 texels at most: the far map is 2048 wide there (see `open`)
-        assert!(LampAtlas::new(2048, true, 4096).height() <= 4096);
+        assert!(LampAtlas::new(2048, true, 4096, true).height() <= 4096);
     }
 }
