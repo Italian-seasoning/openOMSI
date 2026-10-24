@@ -59,12 +59,8 @@ impl TrolleyGear {
         if def.poles.is_empty() && def.drive.is_none() {
             return None;
         }
-        let mut def = def.clone();
-        if def.drive.is_none() && crate::rail::realistic() {
-            def.drive = def.typical_drive.take();
-            def.drive_typical = def.drive.is_some();
-        }
-        let def = &def;
+        // A legacy bus's script owns its gears and interlocks. Do not replace its
+        // traction with a generic drive until those controls have an adapter.
         let pole = (1..=def.poles.len())
             .map(|k| {
                 [
@@ -376,7 +372,40 @@ fn direction_of(throttle: f32, torque: f32, held: f32) -> f32 {
 
 #[cfg(test)]
 mod direction_tests {
-    use super::direction_of;
+    use super::{direction_of, TrolleyDef};
+    #[test]
+    fn legacy_traction_is_not_replaced_by_a_typical_drive() {
+        // Exercise the opt-in path in a fresh process without changing other tests' settings.
+        const CHILD: &str = "OMSI_TEST_LEGACY_TROLLEY_DRIVE";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "vehicle::trolley::direction_tests::legacy_traction_is_not_replaced_by_a_typical_drive"])
+                .env(CHILD, "1")
+                .env("OMSI_REALISTIC_ROAD", "1")
+                .status()
+                .unwrap();
+            assert!(status.success(), "legacy traction must also be preserved in realistic mode");
+        } else {
+            assert!(crate::rail::realistic(), "the child exercises realistic mode");
+        }
+        let def = TrolleyDef {
+            poles: vec![omsi_trolley::PoleDef::default()],
+            typical_drive: Some(omsi_trolley::DriveKind::typical(13_000.0, false)),
+            ..Default::default()
+        };
+        let gear = super::TrolleyGear::for_type(&def, 1).unwrap();
+        assert!(gear.def.drive.is_none(), "the bus script keeps its gears and interlocks");
+        assert!(gear.torque.is_none(), "no native torque overrides the script");
+        assert_eq!(gear.rig.poles.len(), 1, "pole simulation is retained");
+
+        let explicit = TrolleyDef {
+            drive: def.typical_drive.clone(),
+            ..def
+        };
+        let gear = super::TrolleyGear::for_type(&explicit, 1).unwrap();
+        assert_eq!(gear.def.drive, explicit.drive, "an explicitly configured drive remains available");
+    }
+
 
     #[test]
     fn follows_the_sign_of_the_torque_under_the_pedal_and_keeps_it_after() {
