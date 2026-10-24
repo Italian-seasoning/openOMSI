@@ -160,6 +160,7 @@ impl VehicleInstance {
             Some(d) => {
                 if d > 0.5 { 1.0 } else if d < -0.5 { -1.0 } else { 0.0 }
             }
+            // (only with the typical drive, which waits for the script adapter: see `TrolleyDef`)
             None if def.drive_typical => {
                 let torque = self.get(self.v_m_wheel);
                 let held = self.trolley.as_ref().map_or(1.0, |g| g.last_dir);

@@ -213,9 +213,11 @@ impl Default for VarNames {
 pub struct TrolleyDef {
     pub poles: Vec<PoleDef>,
     pub drive: Option<DriveKind>,
-    /// The drive a plain trolleybus gets when its file has none and the realistic physics are on.
+    /// The drive a plain trolleybus could get when its file has none. Not switched on yet: it
+    /// waits for an adapter for the bus script's gears, engine and door brake (see
+    /// `TrolleyGear::for_type`).
     pub typical_drive: Option<DriveKind>,
-    /// `drive` is that typical one (the bus script still has its own drive and gear to follow).
+    /// `drive` is that typical one (never set until that adapter exists).
     pub drive_typical: bool,
     /// Lights, compressor and heater: taken from the line (kW).
     pub aux_kw: f32,

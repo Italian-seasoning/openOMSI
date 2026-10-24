@@ -555,9 +555,8 @@ impl VehicleType {
         if def.trolley.is_empty() {
             def.trolley = legacy_trolley(&model, &meshes, &mesh_boxes, &program, bus_file, keep_meshes);
             take_model_poles(&mut model, &meshes, &mesh_boxes, &def.trolley);
-            // a trolleybus is driven by its traction motors on the line's current, not by the
-            // diesel engine its bus script still carries: with the realistic physics on, modelled
-            // electrics unless the file gives its own (see `TrolleyGear::for_type`)
+            // the drive a trolleybus's traction motors would have, kept for when the bus script's
+            // gears and interlocks have an adapter: `TrolleyGear::for_type` leaves it unused
             if !def.trolley.poles.is_empty() && def.trolley.drive.is_none() && def.trolley.typical_drive.is_none() {
                 let chopper = def.trolley.legacy.as_ref().is_some_and(|l| l.chopper);
                 def.trolley.typical_drive = Some(omsi_trolley::DriveKind::typical(def.mass_kg(), chopper));

@@ -14,7 +14,7 @@ pub mod dynamics;
 pub mod track;
 
 /// Whether the rail physics beyond the original's are on: the pantograph against the wire, the
-/// body on its springs, the power curve of AI trams and the electrics of plain trolleybuses.
+/// body on its springs and the power curve of AI trams.
 /// They change how every existing vehicle drives, so they belong to the setting "Realistic
 /// road physics" (or `OMSI_REALISTIC_ROAD=1`), as the road model's tyres do.
 pub fn realistic() -> bool {
