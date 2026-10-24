@@ -3956,6 +3956,7 @@ dependencies = [
  "omsi-sim",
  "omsi-soundscape",
  "omsi-texture",
+ "omsi-transit",
  "omsi-trolley",
  "omsi-ui",
  "omsi-vehicle",
@@ -4070,6 +4071,14 @@ dependencies = [
 
 [[package]]
 name = "omsi-timetable"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "omsi-cfg",
+]
+
+[[package]]
+name = "omsi-transit"
 version = "0.1.0"
 dependencies = [
  "log",

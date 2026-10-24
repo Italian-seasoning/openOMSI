@@ -122,8 +122,25 @@ impl World {
             }),
             ..Default::default()
         }));
+        let transit = {
+            let mut issues = Vec::new();
+            let t = omsi_transit::TransitData::load(&map_dir, &mut issues);
+            t.check(global.transport, &mut issues);
+            if !t.is_empty() {
+                log::info!("transport folder: {} ({} stations, {} routes, {} depots)", t.files.join(", "), t.stations.list.len(), t.routes.list.len(), t.depots.list.len());
+            }
+            for i in &issues {
+                if i.error {
+                    log::warn!("transport: {i}");
+                } else {
+                    log::info!("transport: {i}");
+                }
+            }
+            Arc::new(t)
+        };
         Ok(World {
             root: root.to_path_buf(),
+            transit,
             global,
             map_dir,
             parklist: Mutex::new(HashMap::new()),

@@ -1,0 +1,151 @@
+# Transport folder: stations, routes, wires, switches, depots, signals
+
+A map made for [transport modes](TRANSPORT_MODES.md) can describe its network in text files in
+a `transport` folder next to `global.cfg`. Every file is optional; a map without the folder
+runs as it always did (tours and `TTData` stay what they are). OMSI 2 ignores the folder.
+
+All files use one syntax: `[block]` lines followed by `key value` lines. A key may repeat,
+`//` and `#` start comments, case does not matter in keys. Units are written in the value:
+`150 m`, `0.15 km`, `25 s`, `4 min`, `80 km/h`, `05:30` (hours past 24 are allowed).
+
+Check a folder with the example tool, which prints every problem with its line:
+
+```
+cargo run -p omsi-transit --example transit_check -- maps/MyMap metro tram
+```
+
+A worked example is in `docs/examples/transport-metro/`.
+
+| File | What | Page section |
+| --- | --- | --- |
+| `network.cfg` | which tracks serve which mode and how they are powered | [Network](#networkcfg) |
+| `stations.cfg` | stations and platforms | [Stations](#stationscfg) |
+| `routes.cfg` | routes of segments and services (no tours needed) | [Routes](#routescfg) |
+| `catenary.cfg` | overhead wire for trams, trolleybuses, railways | [Wires](#catenarycfg-and-thirdrailcfg) |
+| `thirdrail.cfg` | third rail for metros | [Wires](#catenarycfg-and-thirdrailcfg) |
+| `switches.cfg` | track and wire switches | [Switches](#switchescfg) |
+| `depots.cfg` | depots | [Depots](#depotscfg) |
+| `signals.cfg` | signals and blocks | [Signals](#signalscfg) |
+
+## routes.cfg
+
+Routes need no tours. A **route** is a set of **segments**: a run from one station to another
+with the stops between them. A **service** says how vehicles run over some of the segments, in
+order. Segments may be joined at any station, so a branch is a shared trunk segment and two
+services; a short-turn is a service over only part of the line; an express is a segment with
+`skip`.
+
+```
+[route]
+id M2
+name Green line
+mode metro                 // bus | tram | railway | metro | trolleybus
+colour 40 160 60
+
+[segment]                  // belongs to the route above
+id trunk
+from Sokol
+to Aeroport
+via Voykovskaya, Vodny     // stops between, in order
+skip Vodny                 // passed without stopping
+dwell 25 s                 // default 30 s
+speed 80 km/h
+direction both             // forward: the way back is another segment
+
+[service]
+id all_day
+segments trunk north       // each begins where the one before ends
+headway 3 min              // or [trip] blocks with departures
+from 05:30
+to 25:00
+days Mo-Fr                 // Mo-Fr | Sa,Su | weekend | all
+turn_back reverse          // reverse | loop | depot:<id>
+consist 6                  // cars in the train
+vehicle Vehicles/Metro/81-717.ovh
+depot Depot_Sokol
+
+[trip]                     // departures for a service without a headway
+service short
+depart 06:00 06:10 06:20
+```
+
+Rules the checker applies: every station exists in `stations.cfg` and serves the route's mode;
+a service's segments join up; a loop ends where it begins; a service has a headway or trips; the
+depot exists in `depots.cfg`; the route's mode is one of the map's modes.
+
+## stations.cfg
+
+```
+[station]
+id Sokol
+name Sokol
+modes metro tram
+pos 892000 4196000 31.5    // optional
+object 123456              // optional: id code of the map object
+hub Sokol_bus              // optional: stations a passenger changes to
+[platform]                 // belongs to the station above
+id 1
+side island                // left | right | island | both
+length 150 m
+height 1.1 m
+screen_doors yes
+track 4711
+```
+
+## catenary.cfg and thirdrail.cfg
+
+One format for the overhead wire (`catenary_*` blocks; `wires 2` is the trolleybus's pair) and
+one for the third rail (`thirdrail_*`). Both have a `_net` block (voltage, spacing, height, side,
+modes), `_section` blocks (a stretch fed by a substation: `live`, `feeder_ohm`, `regen_kw`),
+`_span` blocks (the line as points `p x y z` of a section) and `_insulator` or `_gap` blocks (a
+break between sections: `pos`, `length`, `between`). The overhead also has `catenary_switch`
+(a frog: `mode power|indicator|fixed`). The existing trolleybus `trolley.txt` is still read as
+before ([TROLLEYBUS.md](TROLLEYBUS.md)).
+
+## network.cfg
+
+```
+[track]
+file Splines/MyMap/tram_*.sli
+modes tram
+street yes
+power catenary             // catenary | third_rail | diesel | none
+speed 40 km/h
+gauge 1435
+```
+
+A rule needs `file`, `tile` or `id`; later rules win field by field. This replaces guessing the
+mode of a track from its name (`openomsi-rail.cfg` is still read).
+
+## switches.cfg
+
+```
+[switch]
+id W12
+modes tram railway
+kind simple                // simple | crossover | double_slip | diamond | scissors | wire
+object 123456              // or: pos x y z
+branches 2
+default straight
+drive auto                 // auto (by route) | manual | interlocked
+diverging_speed 25 km/h
+locked_by S12
+```
+
+## depots.cfg
+
+```
+[depot]
+id Depot_Sokol
+modes metro
+capacity 12
+ai_group Metro_North
+gate 0 0 0                 // vehicles enter and leave here (repeatable)
+station Depot_stop
+turning_loop no
+```
+
+## signals.cfg
+
+`[signal]` (`kind main|distant|shunt|block|speed|tram`, `object`, `block`) and `[block]` (a
+stretch that holds one vehicle: `length`, `next`).
