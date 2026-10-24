@@ -56,6 +56,13 @@ const GLARE_K: f32 = 8.0;
 // the glare's strength at the sprite's rim, against the lamp's core
 const GLARE_TAIL: f32 = 0.4;
 
+// How many times its sprite a lamp's quad is drawn: `GLARE_K` with *Glow of lights* on (enh.led.z),
+// and in mist, fog and rain (which have a halo of their own, in the bitmap) only the sprite.
+fn glare_scale() -> f32 {
+    let wet = clamp(enh.fog.x * 400.0 + enh.weather.z * 0.7, 0.0, 1.0);
+    return select(1.0, GLARE_K, enh.led.z > 0.5 && wet < 1.0);
+}
+
 @vertex
 fn vs_main(in: CoronaIn) -> CoronaOut {
     return corona_vertex(in, 1.0);
@@ -63,7 +70,7 @@ fn vs_main(in: CoronaIn) -> CoronaOut {
 
 @vertex
 fn vs_enhanced(in: CoronaIn) -> CoronaOut {
-    return corona_vertex(in, select(1.0, GLARE_K, enh.led.z > 0.5));
+    return corona_vertex(in, glare_scale());
 }
 
 fn corona_vertex(in: CoronaIn, glare: f32) -> CoronaOut {
@@ -360,14 +367,15 @@ fn fs_enhanced(in: CoronaOut) -> @location(0) vec4<f32> {
     let lamp = in.kind < 0.5 && in.beam < 0.5;
     var qin = in;
     if (lamp) {
-        qin.uv = (in.uv - vec2<f32>(0.5)) * select(1.0, GLARE_K, enh.led.z > 0.5) + vec2<f32>(0.5);
+        qin.uv = (in.uv - vec2<f32>(0.5)) * glare_scale() + vec2<f32>(0.5);
     }
     var shape = corona_shape(qin);
     // (taken here, in uniform control flow: how much of the sprite one pixel spans)
     let r = length(qin.uv - vec2<f32>(0.5)) * 2.0;
     let px = fwidth(r);
     var tail = 0.0;
-    if (lamp) {
+    // (only with the glow on: off, a lamp is drawn exactly as it was before the option)
+    if (lamp && glare_scale() > 1.0) {
         // The glare of a lens (and of an eye) round a bright source: a long tail falling as the
         // cube of the distance (the near term of the CIE's glare function, 10 / theta^3), from
         // the sprite's rim out to the quad's edge, where it is let go. Mist, fog and rain

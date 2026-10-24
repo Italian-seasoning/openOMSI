@@ -122,7 +122,7 @@ fn lamp_airlight(c: vec3<f32>, d: vec3<f32>, start: f32, len: f32, jitter: f32, 
                 // air's haze shows as shimmer and soap. The lamps' halo alone has the ground haze.
                 let beam_lamp = l.extra.z != 0.0 || l.dir.w > -1.5;
                 let fog_sigma = enh.fog.x * droplets;
-                if (beam_lamp && fog_sigma < 2e-4) {
+                if (beam_lamp && enh.fog.x < 2e-4) {
                     continue;
                 }
                 let s0 = select(sigma0, fog_sigma, beam_lamp);

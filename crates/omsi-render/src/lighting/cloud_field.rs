@@ -49,6 +49,8 @@ pub(crate) struct FieldKey {
 }
 
 impl FieldKey {
+    /// Whether a field made for `o` still serves: the sun's direction moves it on after about a
+    /// degree (a few minutes of the day), and the threads that make a new one are two at most.
     pub(crate) fn near(&self, o: &FieldKey) -> bool {
         self.sun.dot(o.sun) > 0.999_850
             && (self.coverage - o.coverage).abs() < 0.015
@@ -57,8 +59,6 @@ impl FieldKey {
     }
 }
 
-/// The sun's direction moves a field on after about a degree (a few minutes of the day), and the
-/// threads that make it are two at most: it is a cost of the frame's side, not of its own.
 /// The cover the shadows are worked out with: the cloud density, less the billows' share.
 pub(crate) fn shadow_coverage(cloud_density: f32) -> f32 {
     (0.3 + cloud_density.clamp(0.0, 1.0) * 0.55 - EROSION).clamp(0.0, 1.0)
