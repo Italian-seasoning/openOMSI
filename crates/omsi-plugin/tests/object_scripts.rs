@@ -1,7 +1,7 @@
 //! Scripts of scenery objects (`[lua_script]` of a `.sco`): started by name, told of their
 //! objects by events, touching only the objects they drive.
 use omsi_plugin::api::Value;
-use omsi_plugin::{MeshTransform, ObjectInfo, PluginIo, Plugins};
+use omsi_plugin::{object_script_name, MeshTransform, ObjectInfo, PluginIo, Plugins};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -98,13 +98,13 @@ fn an_object_script_hears_its_objects_and_moves_them() {
         function on_frame() omsi.object.set_var(7, "seen", #omsi.object.list()) end
     "#).unwrap();
     let mut plugins = Plugins::default();
-    let mut game = game_with("object:gate");
+    let mut game = game_with(&object_script_name(&d.join("gate.lua")));
     let name = plugins.ensure_object_script(&d.join("gate.lua")).expect("the script starts");
-    assert_eq!(name, "object:gate");
-    assert_eq!(plugins.ensure_object_script(&d.join("gate.lua")).as_deref(), Some("object:gate"), "a second object does not start it again");
-    plugins.post("object:gate", "object_init", vec![Value::from(7i64), Value::from("Gate"), Value::from(1.0), Value::from(2.0), Value::from(3.0), Value::from(90.0)]);
+    assert_eq!(name, object_script_name(&d.join("gate.lua")));
+    assert_eq!(plugins.ensure_object_script(&d.join("gate.lua")).as_deref(), Some(name.as_str()), "a second object does not start it again");
+    plugins.post(&name, "object_init", vec![Value::from(7i64), Value::from("Gate"), Value::from(1.0), Value::from(2.0), Value::from(3.0), Value::from(90.0)]);
     for _ in 0..3 {
-        plugins.post("object:gate", "object_frame", vec![Value::from(7i64), Value::from(0.5)]);
+        plugins.post(&name, "object_frame", vec![Value::from(7i64), Value::from(0.5)]);
         plugins.frame(&mut game);
     }
     let vars = &game.objects[&7].1;
@@ -128,10 +128,10 @@ fn a_script_cannot_touch_objects_it_does_not_drive() {
         end)
     "#).unwrap();
     let mut plugins = Plugins::default();
-    let mut game = game_with("object:gate");
+    let mut game = game_with(&object_script_name(&d.join("gate.lua")));
     game.objects.get_mut(&7).unwrap().1.insert("denied".into(), 0.0);
-    plugins.ensure_object_script(&d.join("gate.lua")).unwrap();
-    plugins.post("object:gate", "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
+    let name = plugins.ensure_object_script(&d.join("gate.lua")).unwrap();
+    plugins.post(&name, "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
     plugins.frame(&mut game);
     assert_eq!(game.objects[&7].1["denied"], 1.0, "object 8 belongs to another script");
     assert_eq!(game.objects[&8].1["open"], 0.0);
@@ -155,10 +155,30 @@ fn object_scripts_may_play_sounds_and_nothing_else_of_the_game() {
     let d = dir("perm");
     std::fs::write(d.join("pushy.lua"), "omsi.on('object_frame', function(id) pcall(function() omsi.command('shot') end); pcall(function() omsi.set_var('x', 1) end); omsi.object.set_var(id, 'ran', 1) end)").unwrap();
     let mut plugins = Plugins::default();
-    let mut game = game_with("object:pushy");
+    let mut game = game_with(&object_script_name(&d.join("pushy.lua")));
     game.objects.get_mut(&7).unwrap().1.insert("ran".into(), 0.0);
-    plugins.ensure_object_script(&d.join("pushy.lua")).unwrap();
-    plugins.post("object:pushy", "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
+    let name = plugins.ensure_object_script(&d.join("pushy.lua")).unwrap();
+    plugins.post(&name, "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
     plugins.frame(&mut game);
     assert_eq!(game.objects[&7].1["ran"], 1.0);
+}
+
+#[test]
+fn two_folders_with_the_same_file_name_are_two_scripts() {
+    let d = dir("twins");
+    for (folder, mark) in [("A", 1), ("B", 2)] {
+        std::fs::create_dir_all(d.join(folder)).unwrap();
+        std::fs::write(d.join(folder).join("gate.lua"), format!("omsi.on('object_frame', function(id) omsi.object.set_var(id, 'who', {mark}) end)")).unwrap();
+    }
+    let mut plugins = Plugins::default();
+    let a = plugins.ensure_object_script(&d.join("A").join("gate.lua")).expect("A starts");
+    let b = plugins.ensure_object_script(&d.join("B").join("gate.lua")).expect("B starts");
+    assert_ne!(a, b, "the same basename in two folders must not share a script");
+    assert_eq!(a, object_script_name(&d.join("A").join("gate.lua")));
+    let mut game = game_with(&b);
+    game.objects.get_mut(&7).unwrap().1.insert("who".into(), 0.0);
+    plugins.post(&a, "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
+    plugins.post(&b, "object_frame", vec![Value::from(7i64), Value::from(0.1)]);
+    plugins.frame(&mut game);
+    assert_eq!(game.objects[&7].1["who"], 2.0, "only the script that owns the object may drive it (A is refused, B runs)");
 }

@@ -6,7 +6,7 @@ use crate::App;
 use glam::{Mat4, Vec3};
 use hashbrown::{HashMap, HashSet};
 use omsi_plugin::api::Value;
-use omsi_plugin::{MeshTransform, ObjectInfo, Plugins, OBJECT_PREFIX};
+use omsi_plugin::{MeshTransform, ObjectInfo, Plugins};
 use std::path::PathBuf;
 
 /// What the driver remembers of an object in range.
@@ -25,7 +25,7 @@ pub(crate) struct ObjectScripts {
 
 /// The plugin name a script file runs under.
 fn plugin_name(path: &std::path::Path) -> String {
-    format!("{OBJECT_PREFIX}{}", path.file_stem().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+    omsi_plugin::object_script_name(path)
 }
 
 /// Tell the scripts of the objects near the camera what happens to them. Called before the

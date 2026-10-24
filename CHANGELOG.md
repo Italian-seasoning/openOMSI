@@ -8,6 +8,15 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Scripts for vehicles and map objects**: a vehicle can name Lua or `.oop` scripts with
+  `[vehicle_script]` that start when it becomes the player's and stop when it is left, with the
+  permissions of vehicle content (`ui`, `storage`, `vehicle_write`, `audio`). A `.sco` can name
+  scripts for the objects placed from it (`[lua_script]`, `[lua_range]`, `[lua_rate]`); they hear
+  `object_init`, `object_frame`, `object_click` and `object_gone` and drive their own objects
+  through the new `omsi.object.*` functions: variables, strings, `{trigger}`s, and moving,
+  turning, scaling or hiding single meshes. Scripts are told apart by their whole path, so two
+  folders may each hold a `gate.lua`. See [docs/PLUGINS.md](docs/PLUGINS.md) and
+  [docs/OBJECT_SCRIPTS.md](docs/OBJECT_SCRIPTS.md).
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
   - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
