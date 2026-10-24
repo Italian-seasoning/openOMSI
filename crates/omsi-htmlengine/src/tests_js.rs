@@ -235,9 +235,6 @@ fn the_example_site_loads_and_draws() {
     assert_eq!(r.text_of("line").as_deref(), Some("92"));
     assert_eq!(r.text_of("stop").as_deref(), Some("Zitadelle"));
     let f = r.poll_frame().unwrap();
-    if let Some(path) = std::env::var_os("OMSI_TEST_SITE_RGBA") {
-        std::fs::write(path, &f).unwrap();
-    }
     // the top bar's green rule (2px accent line under a 52 px bar) and a door that is open (red)
     let any = |pred: &dyn Fn([u8; 4]) -> bool| f.chunks_exact(4).any(|p| pred([p[0], p[1], p[2], p[3]]));
     assert!(any(&|p| p == [0x3d, 0xdc, 0x84, 255]), "the accent colour from the custom property");

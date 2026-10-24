@@ -8,6 +8,15 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **HTML screens as sites**: the page engine now understands modern CSS - flexbox, `position` with
+  `z-index`, borders, `box-sizing`, `calc()` and custom properties, attribute selectors,
+  combinators and `:nth-child`, gradients, shadows, `overflow`, `opacity`, `min-`/`max-` sizes,
+  `text-transform`, `letter-spacing`, `text-overflow` - and runs the page's scripts in Boa, a full
+  JavaScript engine: classes, template strings, destructuring, `Promise`, `async`/`await`, `Map`,
+  `JSON`, `RegExp`, `Date`, ES modules (`<script type="module">`, `import`), `fetch` of the page's
+  own files, and a far more complete DOM (events that bubble, `dataset`, `cloneNode`,
+  `getBoundingClientRect`, `getComputedStyle` ...). Old pages work as before. See
+  [docs/HTMLTEXTURE.md](docs/HTMLTEXTURE.md).
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
   - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
