@@ -331,29 +331,50 @@ pub fn save(map: &str, date: &str, groups: &[GroupJson], rules: &[RuleJson]) -> 
             changed += 1;
         }
     }
-    let file = p.lists_file();
-    if text.is_empty() {
-        let _ = std::fs::remove_file(&file);
-    } else {
-        std::fs::create_dir_all(file.parent().context("folder")?)?;
-        std::fs::write(&file, text)?;
+    let clean = |s: &str| s.replace(['\r', '\n'], " ").trim().to_string();
+    // Everything is written under temporary names first and put in place after: a write that
+    // fails (disk full, a file held by a virus scanner) leaves the player's old files as they were.
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new(); // (temporary, final)
+    let mut stage = |to: PathBuf, text: String| -> Result<()> {
+        std::fs::create_dir_all(to.parent().context("folder")?)?;
+        let tmp = to.with_extension("tmp");
+        std::fs::write(&tmp, text).with_context(|| format!("writing {}", to.display()))?;
+        staged.push((tmp, to));
+        Ok(())
+    };
+    let mut made = 0;
+    let written = (|| -> Result<()> {
+        if !text.is_empty() {
+            stage(p.lists_file(), text)?;
+        }
+        for r in rules.iter().filter(|r| !r.line.trim().is_empty() && !r.types.is_empty() && (r.mode == "only" || r.mode == "prefer")) {
+            let types: String = r.types.iter().map(|t| format!("{}\r\n", clean(t))).collect();
+            let body = if r.mode == "only" {
+                format!("[onlytypes]\r\n{types}[end]\r\n")
+            } else {
+                format!("[types_prefered]\r\n{}\r\n{types}[end]\r\n", r.factor.clamp(0.0, 1.0))
+            };
+            let text = format!("[valid]\r\n10000101\r\n99991231\r\n\r\n[line]\r\n{}\r\n\r\n{body}", clean(&r.line));
+            stage(p.rules_dir().join(format!("{RULE_PREFIX}{:03}.ocu", made + 1)), text)?;
+            made += 1;
+        }
+        Ok(())
+    })();
+    if let Err(e) = written {
+        for (tmp, _) in &staged {
+            let _ = std::fs::remove_file(tmp);
+        }
+        return Err(e);
+    }
+    // in place: the old files go, the new ones come
+    if !staged.iter().any(|(_, to)| *to == p.lists_file()) {
+        let _ = std::fs::remove_file(p.lists_file());
     }
     for old in files_of(&p.rules_dir(), RULE_PREFIX) {
         let _ = std::fs::remove_file(old);
     }
-    let clean = |s: &str| s.replace(['\r', '\n'], " ").trim().to_string();
-    let mut made = 0;
-    for r in rules.iter().filter(|r| !r.line.trim().is_empty() && !r.types.is_empty() && (r.mode == "only" || r.mode == "prefer")) {
-        std::fs::create_dir_all(p.rules_dir())?;
-        let types: String = r.types.iter().map(|t| format!("{}\r\n", clean(t))).collect();
-        let body = if r.mode == "only" {
-            format!("[onlytypes]\r\n{types}[end]\r\n")
-        } else {
-            format!("[types_prefered]\r\n{}\r\n{types}[end]\r\n", r.factor.clamp(0.0, 1.0))
-        };
-        let text = format!("[valid]\r\n10000101\r\n99991231\r\n\r\n[line]\r\n{}\r\n\r\n{body}", clean(&r.line));
-        std::fs::write(p.rules_dir().join(format!("{RULE_PREFIX}{:03}.ocu", made + 1)), text)?;
-        made += 1;
+    for (tmp, to) in &staged {
+        std::fs::rename(tmp, to).with_context(|| format!("writing {}", to.display()))?;
     }
     omsi_cfg::content_changed();
     Ok(json!({ "groups": changed, "rules": made }))

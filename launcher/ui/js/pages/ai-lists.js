@@ -11,7 +11,7 @@ import { call } from '../api.js';
 import { Icon } from '../icons.js';
 import { Button, Dialog, Empty, Notice, Search, Segmented, Select, Slider, Spinner, Tag, useConfirm } from '../ui.js';
 import { BusPreview } from '../preview.js';
-import { listsModel } from './ai-lists-model.js';
+import { listsModel, dirty, shouldRead } from './ai-lists-model.js';
 
 const ai = () => S.ai;
 const up = (patch) => set({ ai: { ...S.ai, ...patch } });
@@ -46,11 +46,11 @@ function Stage({ file, paint = '' }) {
   </div>`;
 }
 
-async function readLibrary() {
-  if (ai().lib || ai().libLoading) return;
+async function readLibrary(refresh = false) {
+  if ((ai().lib && !refresh) || ai().libLoading) return;
   up({ libLoading: true });
   try {
-    const lib = await call('ai_vehicles', {});
+    const lib = await call('ai_vehicles', { refresh });
     up({ lib, libIndex: new Map(lib.map((v) => [norm(v.file), v])), libLoading: false });
   } catch (e) {
     up({ libLoading: false, error: String(e.message || e) });
@@ -58,8 +58,6 @@ async function readLibrary() {
 }
 
 const { read, save, reset: resetMap, change } = listsModel({ call, get: ai, up, toast, t });
-
-const dirty = (a) => JSON.stringify(a.groups) !== JSON.stringify(a.saved) || JSON.stringify(a.rules) !== JSON.stringify(a.savedRules);
 
 const setGroup = (g, fn) => {
   const groups = clone(ai().groups);
@@ -357,13 +355,14 @@ export function AiListsPage() {
   const want = a.map && maps.some((m) => m.file === a.map) ? a.map : maps.find((m) => m.file === s.choice?.map)?.file || maps[0]?.file;
   const [ask, confirm] = useConfirm();
   useEffect(() => {
-    if (want && a.loaded !== `${want}|${date}` && a.loading !== `${want}|${date}` && !a.busy) {
+    if (shouldRead(S.ai, want, date)) {
       S.ai.date = date;
       read(want, date);
     }
-  }, [want, date, a.loaded]);
+  }, [want, date, a.loaded, a.busy, dirty(a)]);
   useEffect(() => {
-    readLibrary();
+    // (a vehicle installed since the last visit shows up: the library is read again, the old one shown meanwhile)
+    readLibrary(!!ai().lib);
   }, []);
   if (!maps.length) return html`<${Notice}>${t('No maps found.')}</${Notice}>`;
   const d = a.data;

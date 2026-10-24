@@ -5,6 +5,14 @@
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
+/** Whether the lists unsaved changes were made on differ from what was read. */
+export const dirty = (a) => JSON.stringify(a.groups) !== JSON.stringify(a.saved) || JSON.stringify(a.rules) !== JSON.stringify(a.savedRules);
+
+/** Whether the lists of `map` on `date` are to be read now: they are not already read or being read,
+ * no save is under way, and there are no unsaved changes (a date changed on the Drive page must not
+ * replace them: the lists stay those of the date they were read on, the one a save compares with). */
+export const shouldRead = (a, map, date) => !!map && a.loaded !== `${map}|${date}` && a.loading !== `${map}|${date}` && !a.busy && !dirty(a);
+
 /** `io`: `call(cmd, args)`, `get()` the page's state, `up(patch)` to change it, `toast(text, kind)`
  * and `t(text)`. */
 export function listsModel({ call, get, up, toast, t }) {

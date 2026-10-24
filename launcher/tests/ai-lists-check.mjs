@@ -1,7 +1,7 @@
 // AI Lists: the order of the answers (launcher/ui/js/pages/ai-lists-model.js), no browser needed:
 //   node launcher/tests/ai-lists-check.mjs
 import assert from 'node:assert/strict';
-import { listsModel } from '../ui/js/pages/ai-lists-model.js';
+import { listsModel, shouldRead } from '../ui/js/pages/ai-lists-model.js';
 
 const lists = (map, weight = 1) => ({
   groups: [{ name: map, depot: false, vehicles: [{ file: `Vehicles\\${map}.bus`, weight }], typgroups: [], random: true, modified: false }],
@@ -95,6 +95,22 @@ function page(answers) {
   assert.equal(p.state.error, 'no map');
   assert.equal(p.state.loaded, 'A|d');
   assert.equal(p.state.loading, null);
+}
+
+// 6. Unsaved edits are not replaced when the date changes: no automatic re-read while there are any.
+{
+  const p = page((cmd, a) => lists(a.map));
+  const first = p.model.read('A', 'd1');
+  p.held.shift().resolve();
+  await first;
+  assert.equal(shouldRead(p.state, 'A', 'd1'), false, 'already read');
+  assert.equal(shouldRead(p.state, 'A', 'd2'), true, 'a new date is read while nothing is changed');
+  p.model.change({ groups: [{ ...p.state.groups[0], vehicles: [{ file: 'x', weight: 5 }] }] });
+  assert.equal(shouldRead(p.state, 'A', 'd2'), false, 'not over unsaved edits');
+  p.model.change({ groups: p.state.saved }); // discarded
+  assert.equal(shouldRead(p.state, 'A', 'd2'), true, 'read again once they are gone');
+  p.state.busy = true;
+  assert.equal(shouldRead(p.state, 'A', 'd2'), false, 'not while a save is under way');
 }
 
 console.log('ai-lists-check: ok');
