@@ -8,6 +8,8 @@
 //! its file declares, or an explicit `[rail_class]`), [`TrackClass`] for a piece of track,
 //! and [`dynamics`] moves a consist along its track by the forces on it.
 
+pub mod brake;
+pub mod chain;
 pub mod body;
 pub mod class;
 pub mod dynamics;

@@ -214,6 +214,11 @@ pub struct Vehicle {
     pub axles: Vec<Axle>,
     /// `[suspension]` blocks (openOMSI): the kind of strut per axle.
     pub suspensions: Vec<Suspension>,
+    /// `[rail_traction]`, `[rail_brake]` and `[rail_coupler]` (openOMSI): the traction curve, the
+    /// brake system and the couplers of a rail vehicle (see `rail_spec`).
+    pub rail_traction: Option<crate::rail_spec::RailTraction>,
+    pub rail_brake: Option<crate::rail_spec::RailBrake>,
+    pub rail_coupler: Option<crate::rail_spec::RailCoupler>,
     pub attachments: Vec<Attachment>,
     pub coupling_front: Option<Coupling>,
     pub coupling_back: Option<Coupling>,
@@ -561,6 +566,9 @@ impl Vehicle {
                 "contact_shoe" => v.contact_shoes.push(r.f32s::<6>()),
                 "ai_brakeperformance" => v.ai_brake_performance = Some(r.f32s::<5>()),
                 "fixed" => v.fixed = true,
+                "rail_traction" => v.rail_traction = Some(crate::rail_spec::RailTraction::parse(&r.rest_of_block())),
+                "rail_brake" => v.rail_brake = Some(crate::rail_spec::RailBrake::parse(&r.rest_of_block())),
+                "rail_coupler" => v.rail_coupler = Some(crate::rail_spec::RailCoupler::parse(&r.rest_of_block())),
                 "suspension" => {
                     let lines = r.rest_of_block();
                     v.suspensions.push(Suspension::parse(&lines));

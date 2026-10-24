@@ -8,6 +8,7 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+<<<<<<< HEAD
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
   - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact
@@ -30,6 +31,36 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
     until a script adapter can honor those controls. Explicitly configured trolleybus drives
     and pole simulation remain available.
 
+=======
+- **Rail traction, brakes and couplings**: `[rail_traction]` (a curve of pull against speed, a
+  power limit, an electric brake), `[rail_brake]` (air with a brake pipe wave and filling
+  cylinders, electro-pneumatic or direct; the electric brake first, the friction brake the rest)
+  and `[rail_coupler]` (free play, draft gear, strength; a train pulled apart breaks in two) for
+  pedal-driven trams, metro and railway vehicles. Without the blocks nothing changes. See
+  [docs/RAIL.md](docs/RAIL.md#traction-brakes-and-couplings-of-a-vehicle-openomsi-blocks).
+- **Scripts that belong to a vehicle**: `[vehicle_script]` in a `.bus` or `.ovh` names a Lua or
+  `.oop` script that runs as a plugin while that vehicle is the player's, with the plugin API and
+  the permissions of vehicle content only (`ui`, `storage`, `vehicle_write`, `audio`). See
+  [docs/PLUGINS.md](docs/PLUGINS.md#scripts-that-belong-to-a-vehicle).
+- **Suspension types**: an axle can say `[suspension]` with `type coil | leaf | air |
+  progressive`. Leaf springs stiffen and rub (dry friction between the leaves); air bellows hold
+  the ride height of the empty vehicle whatever the load, through a levelling valve; axles
+  without the block are OMSI 2's strut, unchanged. See [docs/SUSPENSION.md](docs/SUSPENSION.md).
+- **The `transport` folder of a map**: stations with platforms, **routes without tours** (a
+  route is segments from station to station and the services that run over them: a line with a
+  branch, a short-turn or an express is more segments and another service), the overhead wire,
+  a third rail, switches, depots, signals and blocks, in plain text files. Check them with the
+  `transit_check` example. The data is read when the map opens and the problems are logged, and
+  every service runs as a timetable line (one tour per departure and direction) in the launcher,
+  the duty and the AI. See
+  [docs/TRANSPORT_FORMATS.md](docs/TRANSPORT_FORMATS.md).
+- **Transport modes**: a vehicle and a map can say what kind of transport they are for with
+  `[bus_transport]`, `[tram_transport]`, `[railway_transport]`, `[metro_transport]` and
+  `[trolleybus_transport]`. A bus does not start on a tram map and says why; a map with none of
+  them takes every vehicle, and a vehicle with none is judged by its shape as before, so nothing
+  that works now changes. The launcher lists the modes of maps and vehicles; timetable vehicles
+  and the AI pool respect them. See [docs/TRANSPORT_MODES.md](docs/TRANSPORT_MODES.md).
+>>>>>>> f1990a20 (Rail: traction curves, a brake system with a pipe wave and an electric brake, couplings with slack and strength)
 - **LAN protocol 15**: a game of this version cannot join a session of an older one, nor the
   other way round (the AI traffic goes as a table, see below). Update the game on both sides.
 - **Every light casts a shadow** (Enhanced and Enhanced+): the lamps' shadow maps were four, now

@@ -95,9 +95,13 @@ impl VehicleInstance {
             from_scripts.unwrap_or_default()
         } else {
             let reverse = self.var("rail_reverse").is_some_and(|r| r > 0.5);
-            without_current(rail::dynamics::pedal_forces(class, consist.mass, c.throttle, c.brake, v0, reverse), powered)
+            let pedals = rail::dynamics::pedal_forces(class, consist.mass, c.throttle, c.brake, v0, reverse);
+            without_current(self.rail_declared_forces(class, &consist, pedals, c.throttle, c.brake, v0, reverse, dt), powered)
         };
-        let out = rail::step(&consist, &cond, &forces, v0, dt);
+        let mut out = rail::step(&consist, &cond, &forces, v0, dt);
+        if let Some(peak) = self.rail_couplers(&consist, &forces, &out, v0, dt) {
+            out.coupler_force = peak;
+        }
         if omsi_cfg::flags::OMSI_DEBUG_RAIL.is_set() {
             self.rail_log += dt;
             if self.rail_log >= 0.5 {
@@ -116,6 +120,79 @@ impl VehicleInstance {
         }
         self.rail_out = Some(out);
         Some(out)
+    }
+
+    /// The pedal-driven vehicle's forces from what its file describes: the traction curve
+    /// (`[rail_traction]`) in place of the class's typical pull, the brake system (`[rail_brake]`)
+    /// in place of the class's typical braking. What the file leaves out stays the class's.
+    #[allow(clippy::too_many_arguments)]
+    fn rail_declared_forces(&mut self, class: RailClass, consist: &Consist, pedals: Forces, throttle: f32, brake: f32, v: f32, reverse: bool, dt: f32) -> Forces {
+        let traction = self.ty.def.rail_traction.clone();
+        let brake_spec = self.ty.def.rail_brake.clone();
+        if traction.is_none() && brake_spec.is_none() {
+            return pedals;
+        }
+        let mut f = pedals;
+        if let Some(t) = &traction {
+            if !t.points.is_empty() {
+                f.drive = throttle.clamp(0.0, 1.0) * t.pull(v) * if reverse { -1.0 } else { 1.0 };
+            }
+        }
+        // a broken train has its brakes applied by the air escaping from its pipe
+        let handle = if self.rail_broken { 1.0 } else { brake };
+        if brake_spec.is_some() || traction.as_ref().is_some_and(|t| !t.regen.is_empty()) {
+            let perf = class.performance();
+            let spec = brake_spec.unwrap_or_default();
+            let rebuild = self.rail_brake_sys.as_ref().is_none_or(|b| b.cars() != consist.cars);
+            if rebuild {
+                self.rail_brake_sys = Some(rail::brake::BrakeSystem::new(spec, consist.cars, consist.length, consist.mass, perf.service_brake, perf.emergency_brake));
+            }
+            let electric_max = traction.as_ref().map(|t| t.electric_brake(v)).unwrap_or(0.0);
+            if let Some(b) = self.rail_brake_sys.as_mut() {
+                let out = b.step(dt, handle, v, electric_max);
+                // (a tram's magnetic track brake still comes with its emergency stop)
+                f.brake = out.friction + out.electric;
+                f.track_brake = if class == RailClass::Tram && handle >= 0.9 { pedals.track_brake } else { 0.0 };
+            }
+        }
+        f
+    }
+
+    /// The couplings of a train (`[rail_coupler]`): the force they carry this step, worked out
+    /// from how the drive, the brakes and the resistance divide over the cars. `None` for a
+    /// single vehicle or a file without a coupler. A train that pulls a coupling apart is broken
+    /// and its brakes come on.
+    fn rail_couplers(&mut self, consist: &Consist, forces: &Forces, out: &rail::Outcome, v0: f32, dt: f32) -> Option<f32> {
+        let spec = self.ty.def.rail_coupler?;
+        if consist.cars < 2 {
+            return None;
+        }
+        let parts: Vec<&omsi_vehicle::Vehicle> = std::iter::once(&self.ty.def).chain(self.trailers.iter().map(|t| &t.ty.def)).collect();
+        let masses: Vec<f32> = parts.iter().map(|d| d.mass_kg().max(500.0)).collect();
+        if self.rail_chain.as_ref().is_none_or(|c| c.mass.len() != masses.len()) {
+            self.rail_chain = Some(rail::chain::Chain::new(spec, masses.clone(), v0));
+        }
+        let total: f32 = masses.iter().sum();
+        // the drive divides by the weight on each car's driven axles (the head if none is driven)
+        let weights: Vec<f32> = parts.iter().zip(&masses).map(|(d, m)| m * d.axles.iter().filter(|a| a.driven).count() as f32 / d.axles.len().max(1) as f32).collect();
+        let wsum: f32 = weights.iter().sum();
+        let net = out.accel * total * 1.06;
+        let drive_total = forces.drive;
+        let rest = net - drive_total;
+        let ext: Vec<f32> = masses.iter().enumerate().map(|(i, m)| {
+            let d = if wsum > 0.0 { drive_total * weights[i] / wsum } else if i == 0 { drive_total } else { 0.0 };
+            d + rest * m / total
+        }).collect();
+        let chain = self.rail_chain.as_mut()?;
+        let o = chain.step(dt, &ext);
+        // (the lump's speed is the truth; the cars keep their differences from it)
+        let shift = out.speed - o.speed;
+        chain.speed.iter_mut().for_each(|s| *s += shift);
+        if chain.broken.is_some() && !self.rail_broken {
+            self.rail_broken = true;
+            log::warn!("rail: {} broke in two at a coupling ({:.0} kN)", self.ty.def.path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(), o.peak / 1000.0);
+        }
+        Some(o.peak)
     }
 
     /// After the rigid body's step: the rail dynamics' speed. The wheels turn with it - a
