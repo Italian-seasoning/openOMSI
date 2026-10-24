@@ -615,19 +615,11 @@ impl TrafficSim {
         } else {
             100.0
         };
-        // a tram or a train is driven by its class's performance: the start effort and the
-        // power that carries it up (acceleration falls with speed), the service brake, the
-        // jerk a driver keeps for his passengers, and the bends taken at their comfort limit
-        if kind == LaneKind::Rail {
+        // (with the realistic physics a tram or a train pulls as its class does: the pull falls
+        // with speed at the class's power; its brakes and its jerk stay the traffic's)
+        if kind == LaneKind::Rail && crate::rail::realistic() {
             if let Some(class) = crate::rail::RailClass::of(&ty.def) {
-                let p = class.performance();
-                state.accel = p.start_accel * 0.9;
-                state.decel = p.service_brake * 0.8;
-                state.ordinary_brake = p.service_brake;
-                state.emergency_brake = p.emergency_brake;
-                state.jerk = 0.9;
-                state.rail_power = Some(p.kw_per_tonne * 1.0 * 0.85);
-                state.desire = 1.0;
+                state.rail_power = Some(class.performance().kw_per_tonne * 0.85);
             }
         }
         // lorries and vans take bends more gently than cars

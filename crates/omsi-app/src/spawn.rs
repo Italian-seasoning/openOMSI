@@ -258,6 +258,8 @@ pub(crate) fn spawn_player_prepared(
         log::info!("door keys: {}", keys.join(", "));
     }
     let host = vehicle_host(args, world, &vt);
+    // (the realistic physics decide what gears a vehicle is built with: before it is)
+    omsi_sim::rigid::set_realistic_default(crate::settings::Settings::load().realistic_road_physics);
     let mut vehicle = omsi_sim::VehicleInstance::new(vt.clone(), host);
     // place at the entry point
     place_at_entry_point(args, world, &mut vehicle);

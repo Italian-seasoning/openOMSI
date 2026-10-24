@@ -59,6 +59,12 @@ impl TrolleyGear {
         if def.poles.is_empty() && def.drive.is_none() {
             return None;
         }
+        let mut def = def.clone();
+        if def.drive.is_none() && crate::rail::realistic() {
+            def.drive = def.typical_drive.take();
+            def.drive_typical = def.drive.is_some();
+        }
+        let def = &def;
         let pole = (1..=def.poles.len())
             .map(|k| {
                 [
@@ -158,15 +164,16 @@ impl VehicleInstance {
             Some(d) => {
                 if d > 0.5 { 1.0 } else if d < -0.5 { -1.0 } else { 0.0 }
             }
-            None => {
+            None if def.drive_typical => {
                 let torque = self.get(self.v_m_wheel);
                 let held = self.trolley.as_ref().map_or(1.0, |g| g.last_dir);
-                let now = if self.physics.controls.throttle > 0.05 && torque.abs() > 30.0 { torque.signum() } else { held };
+                let now = direction_of(self.physics.controls.throttle, torque, held);
                 if let Some(g) = self.trolley.as_mut() {
                     g.last_dir = now;
                 }
                 now
             }
+            None => 1.0,
         };
         let blinker = {
             let l = self.var(&def.vars.indicator_left).is_some_and(|v| v > 0.5);
@@ -357,5 +364,26 @@ impl VehicleInstance {
                 None => script,
             },
         }
+    }
+}
+
+/// The way a drive of a plain trolleybus pulls, read off the bus script's wheel torque while the
+/// pedal is down (reverse gear: negative torque), the last one kept while it is up or the script
+/// gives none.
+fn direction_of(throttle: f32, torque: f32, held: f32) -> f32 {
+    if throttle > 0.05 && torque.abs() > 30.0 { torque.signum() } else { held }
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::direction_of;
+
+    #[test]
+    fn follows_the_sign_of_the_torque_under_the_pedal_and_keeps_it_after() {
+        assert_eq!(direction_of(0.8, 400.0, 1.0), 1.0);
+        assert_eq!(direction_of(0.8, -400.0, 1.0), -1.0);
+        assert_eq!(direction_of(0.0, 0.0, -1.0), -1.0, "pedal up: kept");
+        assert_eq!(direction_of(0.8, 0.0, -1.0), -1.0, "a script that gives no torque: kept");
+        assert_eq!(direction_of(0.8, 12.0, 1.0), 1.0, "noise is not a direction");
     }
 }

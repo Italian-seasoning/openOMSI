@@ -132,7 +132,7 @@ impl VehicleInstance {
 
     /// What the animations are shown for the pantograph's variable instead of the script's.
     pub(super) fn pantograph_shown(&self) -> Option<(omsi_script::VarId, f32)> {
-        let g = self.panto.as_deref()?;
+        let g = self.panto.as_deref().filter(|_| crate::rail::realistic())?;
         g.shape()?;
         let id = self.var_slot(self.ty.def.pantograph_var.as_deref()?)?;
         Some((id as omsi_script::VarId, g.out.shown))
@@ -167,11 +167,13 @@ impl VehicleInstance {
         let mut heights = Vec::with_capacity(n + 1);
         let mut head = [0.0f32; 2];
         let mut half = 0.5f32;
+        // (one copy of the variables and the animators for all the steps: the animations are
+        // set back to start each time)
+        let mut vars = self.state.vars.clone();
+        let mut probes = self.animators.clone();
         for step in 0..=n {
             let t = step as f32 / n as f32;
-            let mut vars = self.state.vars.clone();
             vars[pid] = t;
-            let mut probes = self.animators.clone();
             let mut transforms: Vec<Mat4> = probes
                 .iter_mut()
                 .map(|a| {
@@ -209,7 +211,7 @@ impl VehicleInstance {
 
     /// One physics step of the pantograph: the head against the wire, the current, the arcs.
     pub(super) fn step_pantograph(&mut self, dt: f32) {
-        if self.panto.is_none() {
+        if self.panto.is_none() || !crate::rail::realistic() {
             return;
         }
         if self.panto.as_ref().is_some_and(|g| g.shape.is_none()) {
@@ -251,8 +253,7 @@ impl VehicleInstance {
                 g.ids = if ids.len() == vals.len() { ids } else { Vec::new() };
             }
         } else {
-            let ids = g.ids.clone();
-            for (id, v) in ids.iter().zip(vals) {
+            for (id, v) in g.ids.iter().zip(vals) {
                 self.state.vars[*id as usize] = v;
             }
         }
@@ -272,7 +273,7 @@ impl VehicleInstance {
     /// Whether the pantograph, as the wire sees it, brings current: `None` for a vehicle whose
     /// pantograph is not simulated (none, or its travel could not be measured).
     pub(super) fn pantograph_current(&self) -> Option<bool> {
-        let g = self.panto.as_deref()?;
+        let g = self.panto.as_deref().filter(|_| crate::rail::realistic())?;
         g.shape()?;
         Some(g.out.powered)
     }

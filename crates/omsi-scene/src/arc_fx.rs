@@ -117,3 +117,45 @@ impl ArcFx {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn spark(energy: f32) -> Spark {
+        Spark { pos: DVec3::new(1.0, 2.0, 6.0), energy, amps: 100.0, kind: SparkKind::Break }
+    }
+
+    #[test]
+    fn a_spark_throws_particles_and_a_flash_that_die_away() {
+        let mut fx = ArcFx::default();
+        fx.add(spark(100.0));
+        assert_eq!(fx.sparks_seen, 1);
+        assert!(fx.particles.len() >= 2 && fx.flashes.len() == 1);
+        for _ in 0..100 {
+            fx.advance(0.01);
+        }
+        assert!(fx.particles.is_empty() && fx.flashes.is_empty());
+    }
+
+    #[test]
+    fn the_sparks_fall_and_the_number_is_bounded() {
+        let mut fx = ArcFx::default();
+        for _ in 0..200 {
+            fx.add(spark(1.0e6));
+        }
+        assert!(fx.particles.len() <= 600);
+        let z0 = fx.particles.iter().map(|p| p.pos.z).sum::<f64>() / fx.particles.len() as f64;
+        fx.advance(0.1);
+        let z1 = fx.particles.iter().map(|p| p.pos.z).sum::<f64>() / fx.particles.len().max(1) as f64;
+        assert!(z1 < z0 + 0.5, "drag and gravity bring them down");
+    }
+
+    #[test]
+    fn a_stronger_arc_throws_more() {
+        let (mut a, mut b) = (ArcFx::default(), ArcFx::default());
+        a.add(spark(4.0));
+        b.add(spark(400.0));
+        assert!(b.particles.len() > a.particles.len());
+    }
+}

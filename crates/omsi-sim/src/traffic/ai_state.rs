@@ -882,10 +882,7 @@ impl AiState {
         let (a, b) = (self.accel.max(0.1) * if self.priority_drive { 1.6 } else { 1.0 }, self.decel.max(0.5));
         let v = self.speed;
         // a rail vehicle's pull falls with speed at constant power (and its adhesion with it)
-        let a = match self.rail_power {
-            Some(p) => a.min((p / v.max(1.0)).max(0.08)),
-            None => a,
-        };
+        let a = power_limited(a, self.rail_power, v);
         let limit = |l: &Lane| {
             // (the bonus is the driver's whole margin: his own liking for speed on top of it
             // would take him past it)
@@ -1193,5 +1190,33 @@ impl AiState {
             self.plan_next(net);
         }
         true
+    }
+}
+
+/// The pull of a vehicle at constant power: at most `p / v` (W/kg over m/s) once that is below the
+/// starting effort `a`, never below 0.08 m/s² so that it does not stall on a long climb.
+pub(crate) fn power_limited(a: f32, power: Option<f32>, v: f32) -> f32 {
+    match power {
+        Some(p) => a.min((p / v.max(1.0)).max(0.08)),
+        None => a,
+    }
+}
+
+#[cfg(test)]
+mod power_tests {
+    use super::power_limited;
+
+    #[test]
+    fn a_road_vehicle_is_not_limited() {
+        assert_eq!(power_limited(1.4, None, 30.0), 1.4);
+    }
+
+    #[test]
+    fn the_pull_falls_with_speed_at_constant_power() {
+        // 12 W/kg: 1.2 m/s² at 10 m/s, 0.6 at 20, the start effort at a crawl
+        assert!((power_limited(1.5, Some(12.0), 10.0) - 1.2).abs() < 1e-5);
+        assert!((power_limited(1.5, Some(12.0), 20.0) - 0.6).abs() < 1e-5);
+        assert_eq!(power_limited(1.0, Some(12.0), 0.2), 1.0);
+        assert_eq!(power_limited(1.0, Some(12.0), 500.0), 0.08);
     }
 }
