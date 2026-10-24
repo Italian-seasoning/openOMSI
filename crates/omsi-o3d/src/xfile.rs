@@ -503,6 +503,9 @@ fn parse_mesh(t: &mut Tok, ctx: &mut Ctx, xform: Mat4) -> Result<(), O3dError> {
     let mut normals: Vec<Vec3> = vec![Vec3::Z; nv];
     let mut uvs: Vec<Vec2> = vec![Vec2::ZERO; nv];
     let mut face_mats: Vec<u16> = vec![0; nf];
+    // (MeshNormals and MeshTextureCoords win over a DeclData that also lists them)
+    let (mut has_normals, mut has_uvs) = (false, false);
+    let mut decl: Option<VertexDeclaration> = None;
     let mut mats: Vec<Material> = Vec::new();
     let mut material_refs: Vec<(usize, String)> = Vec::new();
     loop {
@@ -510,6 +513,7 @@ fn parse_mesh(t: &mut Tok, ctx: &mut Ctx, xform: Mat4) -> Result<(), O3dError> {
         match tok.key() {
             "}" => break,
             "MeshNormals" => {
+                has_normals = true;
                 t.enter()?;
                 let nn = t.int()?;
                 let mut nrm = Vec::with_capacity(nn.min(t.left()));
@@ -534,6 +538,7 @@ fn parse_mesh(t: &mut Tok, ctx: &mut Ctx, xform: Mat4) -> Result<(), O3dError> {
                 t.skip_block()?;
             }
             "MeshTextureCoords" => {
+                has_uvs = true;
                 t.enter()?;
                 let n = t.int()?;
                 for i in 0..n {
@@ -546,9 +551,8 @@ fn parse_mesh(t: &mut Tok, ctx: &mut Ctx, xform: Mat4) -> Result<(), O3dError> {
             }
             "DeclData" => {
                 t.enter()?;
-                let decl = read_vertex_declaration(t)?;
+                decl = Some(read_vertex_declaration(t)?);
                 t.skip_block()?;
-                decl.apply(normal_matrix(xform), &mut normals, &mut uvs);
             }
             "MeshMaterialList" => {
                 t.enter()?;
@@ -600,6 +604,9 @@ fn parse_mesh(t: &mut Tok, ctx: &mut Ctx, xform: Mat4) -> Result<(), O3dError> {
             }
             _ => skip_object(t, &tok)?,
         }
+    }
+    if let Some(decl) = decl {
+        decl.apply(normal_matrix(xform), nv, (!has_normals).then_some(&mut normals[..]), (!has_uvs).then_some(&mut uvs[..]));
     }
     if mats.is_empty() {
         mats.push(Material::default());
@@ -732,7 +739,7 @@ fn unpack_element(kind: u32, w: &[u32]) -> Option<Vec4> {
 impl VertexDeclaration {
     /// Take the first normal and the first texture coordinate set out of the buffer. A layout
     /// with a type Direct3D 9 does not have gives no stride, so nothing is taken from it.
-    fn apply(&self, to_world: Mat3, normals: &mut [Vec3], uvs: &mut [Vec2]) {
+    fn apply(&self, to_world: Mat3, vertices: usize, mut normals: Option<&mut [Vec3]>, mut uvs: Option<&mut [Vec2]>) {
         let mut offsets = Vec::with_capacity(self.elements.len());
         let mut stride = 0;
         for element in &self.elements {
@@ -743,7 +750,9 @@ impl VertexDeclaration {
             offsets.push(stride);
             stride += bytes / 4;
         }
-        if stride == 0 {
+        // a buffer that does not hold exactly one record per vertex is not this mesh's
+        // (the vertex count and the stride would otherwise scramble every coordinate)
+        if stride == 0 || self.buffer.len() != stride * vertices {
             return;
         }
         for (element, &offset) in self.elements.iter().zip(&offsets) {
@@ -754,11 +763,11 @@ impl VertexDeclaration {
                 let Some(value) = unpack_element(element.kind, &vertex[offset..]) else {
                     break;
                 };
-                match element.usage {
-                    DECLUSAGE_NORMAL if v < normals.len() => {
+                match (element.usage, normals.as_deref_mut(), uvs.as_deref_mut()) {
+                    (DECLUSAGE_NORMAL, Some(normals), _) => {
                         normals[v] = (to_world * value.truncate()).normalize_or_zero();
                     }
-                    DECLUSAGE_TEXCOORD if v < uvs.len() => uvs[v] = Vec2::new(value.x, value.y),
+                    (DECLUSAGE_TEXCOORD, _, Some(uvs)) => uvs[v] = Vec2::new(value.x, value.y),
                     _ => {}
                 }
             }
@@ -1227,6 +1236,31 @@ mod binary_tests {
         let x = "xof 0303txt 0032\nMesh { 1; 0;0;0;; 0;;\n DeclData { 1; 42;0;3;0;; 1; 7; } }\n";
         let m = parse_x(x.as_bytes()).unwrap();
         assert_eq!(m.vertices[0].normal, Vec3::Z);
+    }
+
+    /// A mesh that has its own MeshNormals and MeshTextureCoords keeps them; DeclData fills in
+    /// only what the mesh does not say, and only when it holds one record per vertex.
+    #[test]
+    fn vertex_declaration_does_not_override_or_misfit() {
+        let f = |v: f32| v.to_bits().to_string();
+        let record = [1.0, 0.0, 0.0, 0.9, 0.9].map(f).join(",");
+        // FLOAT3 normal and FLOAT2 texcoord per vertex, `records` of them
+        let mesh = |own: &str, records: usize| {
+            let data = vec![record.as_str(); records].join(",");
+            format!(
+                "xof 0303txt 0032\nMesh {{ 2; 0;0;0;, 1;0;0;; 1; 3;0,1,1;;\n{own}\
+                 DeclData {{ 2; 2;0;3;0;, 1;0;5;0;; {}; {data};\n }} }}\n",
+                records * 5
+            )
+        };
+        let own = "MeshNormals { 2; 0;1;0;, 0;1;0;; 1; 3;0,1,1;; }\nMeshTextureCoords { 2; 0.1;0.2;, 0.3;0.4;; }\n";
+        let m = parse_x(mesh(own, 2).as_bytes()).unwrap();
+        assert_eq!((m.vertices[0].normal, m.vertices[0].uv), (Vec3::Y, Vec2::new(0.1, 0.2)));
+        // three records for two vertices are not this mesh's
+        let m = parse_x(mesh("", 3).as_bytes()).unwrap();
+        assert_eq!((m.vertices[0].normal, m.vertices[0].uv), (Vec3::Z, Vec2::ZERO));
+        let m = parse_x(mesh("", 2).as_bytes()).unwrap();
+        assert_eq!((m.vertices[1].normal, m.vertices[1].uv), (Vec3::X, Vec2::new(0.9, 0.9)));
     }
 
     /// Objects and references may carry a GUID after their name, or only a GUID.
