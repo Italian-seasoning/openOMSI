@@ -36,6 +36,9 @@ pub struct TransitTrip {
     pub trip: String,
     pub mode: omsi_cfg::transport::TransportMode,
     pub stops: Vec<TransitStop>,
+    /// Where the vehicle comes out of its depot before it reaches the first stop (the depot's
+    /// gate): the trip begins there, and the first stop is reached after the run from it.
+    pub lead_in: Option<[f64; 3]>,
 }
 
 /// What the merge did, for the log.
@@ -154,14 +157,27 @@ pub fn merge_transit(data: &mut TimetableData, transit: &TransitData) -> Merged 
             }
             data.trips.push(trip_for(out_trip.clone(), route, &ids, &to_station(&last)));
             data.transit_trips.retain(|t| t.trip != out_trip && t.trip != back_trip);
-            data.transit_trips.push(TransitTrip { trip: out_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: meta.clone() });
+            data.transit_trips.push(TransitTrip { trip: out_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: meta.clone(), lead_in: None });
             out.trips += 1;
             let reverse = sv.turn_back == TurnBack::Reverse && !route.segment(sv.segments.first().map(String::as_str).unwrap_or("")).is_some_and(|s| s.one_way);
             if reverse {
                 data.trips.push(trip_for(back_trip.clone(), route, &back_ids, &to_station(&first)));
                 let mut back_meta = meta.clone();
                 back_meta.reverse();
-                data.transit_trips.push(TransitTrip { trip: back_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: back_meta });
+                data.transit_trips.push(TransitTrip { trip: back_trip.clone(), mode: route.mode.unwrap_or(omsi_cfg::transport::TransportMode::Bus), stops: back_meta, lead_in: None });
+                out.trips += 1;
+            }
+            // the first departure of the day comes out of the depot's gate, when the service's depot has one
+            let gate = sv.depot.as_ref().and_then(|d| transit.depots.list.iter().find(|x| x.id.eq_ignore_ascii_case(d))).and_then(|d| d.gates.first().copied());
+            let pull_out = format!("{out_trip}_pullout");
+            data.trips.retain(|t| t.name != pull_out);
+            data.transit_trips.retain(|t| t.trip != pull_out);
+            if let (Some(g), Some(base)) = (gate, data.trips.iter().find(|t| t.name == out_trip).cloned()) {
+                data.trips.push(Trip { name: pull_out.clone(), ..base });
+                let mut m = data.transit_trips.iter().find(|t| t.trip == out_trip).cloned().unwrap();
+                m.trip = pull_out.clone();
+                m.lead_in = Some(g);
+                data.transit_trips.push(m);
                 out.trips += 1;
             }
             let idx = match data.lines.iter().position(|l| l.name.eq_ignore_ascii_case(&line_name)) {
@@ -173,12 +189,12 @@ pub fn merge_transit(data: &mut TimetableData, transit: &TransitData) -> Merged 
                 }
             };
             let mask = day_mask(sv.days).to_string();
-            for d in &deps {
+            for (k, d) in deps.iter().enumerate() {
                 let number = format!("{}-{:02}{:02}", sv.id, (*d as u32 / 60) % 100, *d as u32 % 60);
                 // (vehicles run both ways at once: the way back is its own tour, leaving the other
                 // end at the same times, not a second trip after the first, whose running time
                 // the file does not give)
-                data.lines[idx].tours.push(Tour { number: number.clone(), ai_group: ai_group.clone(), extra: mask.clone(), trips: vec![TourTrip { trip: out_trip.clone(), profile: 0, departure: *d }] });
+                data.lines[idx].tours.push(Tour { number: number.clone(), ai_group: ai_group.clone(), extra: mask.clone(), trips: vec![TourTrip { trip: if k == 0 && gate.is_some() { pull_out.clone() } else { out_trip.clone() }, profile: 0, departure: *d }] });
                 out.tours += 1;
                 if reverse {
                     data.lines[idx].tours.push(Tour { number: format!("{number}r"), ai_group: ai_group.clone(), extra: mask.clone(), trips: vec![TourTrip { trip: back_trip.clone(), profile: 0, departure: *d }] });
@@ -243,5 +259,31 @@ mod tests {
     fn departures_come_from_headway_and_trips() {
         let sv = Service { headway_s: Some(1800.0), from_s: Some(21600.0), to_s: Some(25200.0), departures: vec![23400.0], ..Default::default() };
         assert_eq!(departures(&sv), vec![360.0, 390.0, 420.0]);
+    }
+
+    #[test]
+    fn the_first_departure_comes_out_of_the_depot_gate() {
+        let dir = std::env::temp_dir().join(format!("omsi-tt-gate-{}", std::process::id()));
+        let t = dir.join("transport");
+        std::fs::create_dir_all(&t).unwrap();
+        std::fs::write(t.join("stations.cfg"), "[station]\nid A\nname Alpha\nobject 101\n[station]\nid B\nname Beta\nobject 102\n").unwrap();
+        std::fs::write(t.join("depots.cfg"), "[depot]\nid D\nmodes tram\ngate 5 6 7\n").unwrap();
+        std::fs::write(t.join("routes.cfg"), "[route]\nid T\nmode tram\n[segment]\nid s\nfrom A\nto B\n[service]\nid all\nsegments s\nheadway 30 min\nfrom 06:00\nto 07:00\ndepot D\n").unwrap();
+        let mut issues = Vec::new();
+        let transit = TransitData::load(&dir, &mut issues);
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut data = TimetableData::default();
+        for (n, id) in [("Alpha", 101), ("Beta", 102)] {
+            data.bus_stops.push(BusStopEntry { name: n.into(), object_id: id, ..Default::default() });
+        }
+        merge_transit(&mut data, &transit);
+        let first = &data.lines[0].tours[0];
+        assert_eq!(first.trips[0].trip, "T_all_out_pullout");
+        let later = data.lines[0].tours.iter().find(|t| t.number == "all-0630").unwrap();
+        assert_eq!(later.trips[0].trip, "T_all_out", "only the first departure comes from the depot");
+        let m = data.transit_trips.iter().find(|t| t.trip == "T_all_out_pullout").unwrap();
+        assert_eq!(m.lead_in, Some([5.0, 6.0, 7.0]));
+        assert_eq!(m.stops.len(), 2);
+        assert_eq!(data.trips.iter().find(|t| t.name == "T_all_out_pullout").unwrap().stations, vec![101, 102]);
     }
 }

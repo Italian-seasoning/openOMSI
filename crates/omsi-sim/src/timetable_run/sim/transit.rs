@@ -160,6 +160,14 @@ pub fn profile(trip: &TransitTrip, hop_m: &[f32]) -> TripProfile {
     let mut arr = Vec::new();
     let mut dep = Vec::new();
     let mut t = 0.0f32;
+    // a run from the depot's gate comes first: the vehicle reaches its first stop after it
+    let lead = trip.lead_in.is_some() && hop_m.len() == trip.stops.len();
+    let (lead_m, hop_m) = if lead { (hop_m[0], &hop_m[1..]) } else { (0.0, hop_m) };
+    if lead {
+        // (out of a depot yard at a yard's pace)
+        t += hop_time(lead_m, cruise.min(8.0), accel);
+        arr.push((0, t / 60.0));
+    }
     for (i, st) in trip.stops.iter().enumerate() {
         if i > 0 {
             let v = trip.stops[i - 1].speed.unwrap_or(cruise);
@@ -168,8 +176,8 @@ pub fn profile(trip: &TransitTrip, hop_m: &[f32]) -> TripProfile {
         }
         if i + 1 < trip.stops.len() {
             // (the trip leaves its first stop at its departure: the standing there is the previous
-            // trip's layover)
-            if i > 0 {
+            // trip's layover; one that comes from the gate stands there as at any stop)
+            if i > 0 || lead {
                 t += st.dwell_s;
             }
             dep.push((i as i32, t / 60.0));
@@ -226,6 +234,25 @@ impl ScheduleSim {
     }
 }
 
+/// Find the lanes of the map's signalling blocks: from where each begins to where it ends,
+/// over the rail lanes. A block that cannot be found is named in the `Err`.
+pub fn route_blocks(net: &Network, signals: &omsi_transit::Signals) -> Vec<(String, Result<crate::ai_traffic::blocks::BlockDef, String>)> {
+    signals
+        .blocks
+        .iter()
+        .filter_map(|b| Some((b, b.from?, b.to?)))
+        .map(|(b, from, to)| {
+            let pts = [DVec3::new(from[0], from[1], from[2]), DVec3::new(to[0], to[1], to[2])];
+            let result = route(net, TransportMode::Railway, &[format!("{} begin", b.id), format!("{} end", b.id)], &pts).map(|r| crate::ai_traffic::blocks::BlockDef {
+                id: b.id.clone(),
+                lanes: r.lanes.iter().filter_map(|&l| net.lanes[l].key.map(|k| (k, net.lanes[l].reversed))).collect(),
+                signal: signals.signal_of(&b.id).and_then(|s| s.object),
+            });
+            (b.id.clone(), result)
+        })
+        .collect()
+}
+
 /// Route every wanted trip (what the worker of the game does once the map's network is read).
 pub fn route_all(net: &Network, places: &hashbrown::HashMap<i64, DVec3>, wanted: &[TransitTrip]) -> Vec<(String, Result<Routed, String>)> {
     wanted
@@ -235,9 +262,22 @@ pub fn route_all(net: &Network, places: &hashbrown::HashMap<i64, DVec3>, wanted:
             let result = match at.iter().position(|p| p.is_none()) {
                 Some(i) => Err(format!("station {} has no place (give `pos` in stations.cfg, or the stop object is not on the map)", t.stops[i].name)),
                 None => {
-                    let names: Vec<String> = t.stops.iter().map(|s| s.name.clone()).collect();
-                    let pts: Vec<DVec3> = at.into_iter().flatten().collect();
-                    route(net, t.mode, &names, &pts)
+                    let mut names: Vec<String> = t.stops.iter().map(|s| s.name.clone()).collect();
+                    let mut pts: Vec<DVec3> = at.into_iter().flatten().collect();
+                    let plain = route(net, t.mode, &names, &pts);
+                    match t.lead_in {
+                        // the depot's gate in front of the first stop; a gate with no track by it
+                        // (or none leading to the stop) is left out, the trip begins at the stop
+                        Some(g) => {
+                            names.insert(0, "the depot gate".into());
+                            pts.insert(0, DVec3::new(g[0], g[1], g[2]));
+                            route(net, t.mode, &names, &pts).or_else(|why| {
+                                log::warn!("transport route {}: {why}; it begins at its first stop", t.trip);
+                                plain
+                            })
+                        }
+                        None => plain,
+                    }
                 }
             };
             (t.trip.clone(), result)
@@ -309,6 +349,7 @@ mod tests {
                 TransitStop { object: 2, name: "B".into(), dwell_s: 30.0, speed: Some(10.0), ..Default::default() },
                 TransitStop { object: 3, name: "C".into(), dwell_s: 20.0, ..Default::default() },
             ],
+            lead_in: None,
         };
         let p = profile(&trip, &[1500.0, 1000.0]);
         // A to B at the metro's 19.4 m/s cruise: 1500/19.4 + 19.4/1 = 96.7 s; B to C at 10 m/s: 100 + 10 = 110 s
@@ -370,5 +411,51 @@ mod tests {
         // (the trip that could not be routed is given up, not held for ever)
         assert!(sim.transit_wanted().is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_block_is_the_lanes_between_its_ends() {
+        let signals = {
+            let dir = std::env::temp_dir().join(format!("omsi_blocks_route_{}", std::process::id()));
+            let t = dir.join("transport");
+            std::fs::create_dir_all(&t).unwrap();
+            std::fs::write(t.join("signals.cfg"), "[signal]\nid S\nmodes railway\nobject 900\nblock B\n[block]\nid B\nmodes railway\nfrom 120 0 0\nto 280 0 0\n[block]\nid Far\nmodes railway\nfrom 120 0 0\nto 280 900 0\n").unwrap();
+            let mut issues = Vec::new();
+            let d = omsi_transit::TransitData::load(&dir, &mut issues);
+            let _ = std::fs::remove_dir_all(&dir);
+            d.signals
+        };
+        let found = route_blocks(&net(), &signals);
+        let (id, ok) = &found[0];
+        assert_eq!(id, "B");
+        let def = ok.as_ref().unwrap();
+        assert_eq!(def.lanes.iter().map(|l| l.0.id).collect::<Vec<_>>(), vec![2, 3], "from the middle lane to the last");
+        assert_eq!(def.signal, Some(900));
+        assert!(found[1].1.is_err(), "the far end has no track near it");
+    }
+
+    #[test]
+    fn a_run_from_the_gate_comes_before_the_first_stop() {
+        let mut trip = TransitTrip {
+            trip: "T".into(),
+            mode: TransportMode::Tram,
+            stops: vec![
+                TransitStop { object: 1, name: "A".into(), dwell_s: 20.0, ..Default::default() },
+                TransitStop { object: 2, name: "B".into(), dwell_s: 20.0, ..Default::default() },
+            ],
+            lead_in: Some([0.0, 0.0, 0.0]),
+        };
+        // gate to A 300 m, A to B 600 m
+        let p = profile(&trip, &[300.0, 600.0]);
+        let arr_a = p.man_arr_time.iter().find(|a| a.0 == 0).map(|a| a.1 * 60.0).expect("arrives at the first stop after the run");
+        assert!(arr_a > 30.0, "{arr_a}: it comes in from elsewhere (not 'begins at its stop')");
+        let dep_a = p.man_dep_time.iter().find(|a| a.0 == 0).unwrap().1 * 60.0;
+        assert!((dep_a - (arr_a + 20.0)).abs() < 0.2, "it stands at A as at any stop");
+        let arr_b = p.man_arr_time.iter().find(|a| a.0 == 1).unwrap().1 * 60.0;
+        assert!((arr_b - (dep_a + hop_time(600.0, 13.9, 1.0))).abs() < 0.5);
+        // a gate that could not be routed: the hops are the stops' own, no lead
+        trip.lead_in = Some([0.0; 3]);
+        let q = profile(&trip, &[600.0]);
+        assert!(q.man_arr_time.iter().all(|a| a.0 != 0), "no arrival at stop 0: the trip begins there");
     }
 }

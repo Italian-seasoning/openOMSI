@@ -34,9 +34,50 @@ A worked example is in `docs/examples/transport-metro/`.
 | `network.cfg` | the class (tram, metro, railway), street or mainline, third rail, tunnel and speed limit of the rail lanes it matches, after `openomsi-rail.cfg` (which still works) |
 | `stations.cfg`, `routes.cfg` | the lines, tours and trips of the timetable, routed over the map's network (see below); the stops, the departure boards, the IBIS |
 | `catenary.cfg`, `thirdrail.cfg` | the current of the player's rail vehicle: a pantograph needs a live section of wire under it, a shoe a live section of rail beside it, and a sagging line weakens the motors (a vehicle says `[rail_power]` `catenary`, `third_rail` or `diesel`; else a contact shoe means third rail and a pantograph overhead wire). A map without the file takes the current for granted. AI vehicles are not powered by the line yet |
-| `switches.cfg` | the speed limit of the diverging branch (`diverging_speed` with `object`, `tile`, `diverging_path`); the other keys (kind, default, drive, locked_by) are read and checked, and not yet acted on |
-| `depots.cfg` | the `ai_group` of a service's depot supplies its vehicles; gates, capacity and pull-out runs are read, checked and not yet acted on |
-| `signals.cfg` | read and checked; blocks and signals do not yet hold AI trains |
+| `switches.cfg` | the speed limit of the diverging branch (`diverging_speed` with `object`, `tile`, `diverging_path`), and how the points are operated (see [Switches](#switchescfg-in-the-game)) |
+| `depots.cfg` | the `ai_group` of a service's depot supplies its vehicles; the first departure of a service with a depot comes out of the depot's first `gate` (see [Depots](#depotscfg-in-the-game)); capacity is read and not yet acted on |
+| `signals.cfg` | blocks with `from` and `to` hold AI trains one at a time and their signals show it (see [Signals](#signalscfg-in-the-game)) |
+
+### `signals.cfg` in the game
+
+A block is a stretch of track given by where it begins and ends (`from x y z`, `to x y z`, the
+map's coordinates, on the rails). The game routes the rail lanes between them on the whole map's
+network at the start. An AI train that would enter a block another train is in (on its lane, on the
+twin lane of the other direction of a single track, or with its tail not yet out) stops before the
+block's first lane as at a red light, and goes on when it is free. The player's train in a block
+holds the AI trains out of it. The `object` of a `[signal]` with a `block` is a scenery signal of
+the map (the same `Signal` variable the map's own signal routes set): it shows stop (0) while its
+block is in use and go (1) while it is free. The blocks need the timetable (`--schedule`) to have
+trains to hold; the signals show for the player's train without it.
+
+### `switches.cfg` in the game
+
+```
+[switch]
+id W12
+modes tram railway
+object 123456
+tile 12 5
+straight_path 0            // the [path] of the object that is the straight way
+diverging_path 1           // the diverging branch (repeat), also where diverging_speed applies
+default straight           // the rest position: straight | diverging
+drive interlocked          // auto | manual | interlocked
+locked_by S12              // a signal id of signals.cfg
+diverging_speed 25 km/h
+```
+
+Trains throw points as they always did (to the branch their route takes). A switch listed here is
+also: held where it is while a train stands on it (its pieces and a tail still on it), put back in
+its rest position 15 s after the last request, and, with `drive manual`, not thrown by AI trains at
+all; `locked_by` keeps it still while that signal shows go. A switch the file does not list behaves
+as before.
+
+### `depots.cfg` in the game
+
+A service with a `depot` whose depot has a `gate x y z` sends its first departure of the day out of
+the gate: the vehicle appears at the gate, runs to the first station along the rails (a yard pace of
+8 m/s at most) and stands there as at any stop. A gate with no rail within 25 m or no way to the
+station is left out, the trip then begins at its station and the log says so.
 
 ## routes.cfg
 
