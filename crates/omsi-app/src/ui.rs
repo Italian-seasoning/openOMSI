@@ -1174,8 +1174,7 @@ pub struct LoadTimes;
 
 impl LoadTimes {
     fn path() -> Option<std::path::PathBuf> {
-        let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-        Some(std::path::PathBuf::from(home).join(".openomsi").join("cache").join("load-times.json"))
+        Some(omsi_cfg::user_data::base_dir()?.join("cache/load-times.json"))
     }
 
     fn read() -> serde_json::Map<String, serde_json::Value> {

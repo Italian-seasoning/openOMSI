@@ -32,8 +32,7 @@ use std::path::PathBuf;
 
 /// `~/.openomsi`: the session's status file, the LAN mods' store.
 pub fn data_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi"))
+    omsi_cfg::user_data::base_dir()
 }
 
 pub use omsi_net::LEFT_SERVER;
