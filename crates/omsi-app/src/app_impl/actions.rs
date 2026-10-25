@@ -115,7 +115,7 @@ impl App {
     /// The flashlight on or off (Alt+F): it lights what the view looks at, in every view.
     pub(crate) fn toggle_flashlight(&mut self) {
         self.cam.flashlight = !self.cam.flashlight;
-        let text = if self.cam.flashlight { "Flashlight on (Alt+F)" } else { "Flashlight off" };
+        let text = if self.cam.flashlight { "Flashlight on" } else { "Flashlight off" };
         self.service_msg = Some((text.into(), 1.5));
     }
 
