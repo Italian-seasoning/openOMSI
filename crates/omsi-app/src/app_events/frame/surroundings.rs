@@ -88,6 +88,9 @@ pub(super) fn lights(cx: LightsCx, dt: f32, daylight: omsi_sim::Daylight, behind
             cx.player.player.is_some(),
         );
         drop(vehicles);
+        if cx.view.cam.flashlight {
+            lights::flashlight_ahead(scene, cam);
+        }
         if let Some(p) = cx.player.player.as_ref() {
             if let Some(tv) = p.trolley_view.as_ref() {
                 tv.push_effects(scene, &p.vehicle);

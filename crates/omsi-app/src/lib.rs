@@ -757,6 +757,7 @@ fn assemble_app(args: Args, settings: settings::Settings) -> App {
             view_fov: None,
             head_idle_hold: Default::default(),
             ego: false,
+            flashlight: false,
             in_cab: false,
             look: (0.0, 0.0),
             look_smooth: (0.0, 0.0),

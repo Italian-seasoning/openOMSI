@@ -8,6 +8,10 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **A flashlight (Alt+F)**: a hand lamp held beside the eye that shines where the view looks, a
+  warm white cone reaching 50 m with a soft edge, in the Vanilla and the Enhanced pictures, in
+  every view, by night in the dark or by day inside a dim cab. `flashlight` in keyboard.cfg's
+  `[game]` (or a controller button) switches it as well.
 - **A modern engine for HTML screens (opt-in)**: a page that puts
   `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
   `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,

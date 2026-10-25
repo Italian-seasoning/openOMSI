@@ -1060,6 +1060,36 @@ pub fn collect(
     scene.lights.sort_by(|a, b| (a.position - camera_pos).length_squared().total_cmp(&(b.position - camera_pos).length_squared()));
 }
 
+/// The player's flashlight: a hand lamp held beside the eye and aimed where the view looks,
+/// a narrow bright cone with a soft edge that lights the way by night (or the inside of a dark
+/// cab by day) and reaches 50 m. It shines in both pictures and puts itself first among the
+/// lights, so the light grid's cells (which hold a limited number) never drop it.
+pub fn flashlight(lights: &mut Vec<PointLight>, eye: DVec3, forward: Vec3, right: Vec3, up: Vec3) {
+    let d = forward.normalize_or_zero();
+    if d == Vec3::ZERO {
+        return;
+    }
+    // (held a hand's width to the right and below the eye: from the eye itself the cone
+    // would light the very pixels it is looked through, without the shading a torch has)
+    let at = eye + (right * 0.18 - up * 0.14).as_dvec3();
+    // values as a `[spotlight]` declares them: position, direction, colour, range, inner and
+    // outer cone (degrees, full angles); a warm white, 50 m, 14 and 42 degrees
+    let vals = [0.0, 0.0, 0.0, d.x, d.y, d.z, 255.0, 240.0, 215.0, 50.0, 14.0, 42.0];
+    // (night = 1: the classic picture dims a lamp by day, a torch is as bright by day)
+    push_spot(lights, at, d, Vec3::ZERO, &vals, FLASHLIGHT_SHARE, 1.0);
+}
+
+/// The flashlight held at the camera's eye, shining along its view (`flashlight`).
+pub fn flashlight_ahead(scene: &mut Scene, cam: &omsi_render::Camera) {
+    let mut torch = Vec::with_capacity(2);
+    flashlight(&mut torch, cam.position, cam.forward(), cam.right(), cam.up());
+    // (first of the lights: they are sorted by distance and a grid cell holds a few)
+    scene.lights.splice(0..0, torch);
+}
+
+/// A flashlight's share of a headlamp pair's strength: one small lamp, not two big ones.
+const FLASHLIGHT_SHARE: f32 = 0.45;
+
 /// How far Omsi.exe moves every `[smoke]` and `[particle_emitter]` puff towards the eye in
 /// depth (m): 0x5a1d54 gives each particle 0.1, which 0x5a2b5c takes off the view depth it
 /// projects the puff's depth at.
