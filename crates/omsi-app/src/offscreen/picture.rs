@@ -200,6 +200,9 @@ impl Offscreen<'_> {
         {
             let vehicles = steps::light_vehicles(player_ref.as_ref(), traffic.as_ref(), remotes_off);
             world_lights(renderer, world, scene, weather, daylight, camera.position, &vehicles, &settings.vehicle_smoke, player_ref.is_some());
+            if omsi_cfg::flags::OMSI_FLASHLIGHT.is_set() {
+                lights::flashlight_ahead(scene, &camera);
+            }
             if let Some(p) = player_ref.as_ref() {
                 if let Some(tv) = p.trolley_view.as_ref() {
                     tv.push_effects(scene, &p.vehicle);
