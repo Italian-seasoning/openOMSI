@@ -45,6 +45,28 @@ Start a map with a bus: the greeting shows up on the screen, and above 50 km/h t
 Edit the file while the game runs and save it - the plugin is loaded again within a second
 ("Lua plugin hello reloaded").
 
+### Scripts that belong to a vehicle
+
+A vehicle can carry its own scripts, written in Lua or compiled to a `.oop` (Lua or Rust), so a
+mod needs no plugin installed by the player. Name them in the vehicle's `.bus` or `.ovh`, relative
+to the vehicle's folder:
+
+```
+[vehicle_script]
+scripts/cab.lua
+
+[vehicle_script]
+scripts/ibis.oop
+```
+
+The scripts start when the vehicle becomes the player's and stop when another vehicle (or none)
+does; they see the same `omsi.*` API as any plugin, the `omsi.var` of the bus being theirs. They
+are named `vehicle:<file>` in the log. Because a vehicle is content from anywhere, they have only
+these permissions: `ui`, `storage`, `vehicle_write` and `audio`. The world, the traffic, the
+camera, the LAN, UDP and native programs stay with the player's own plugins; a `.oop` that
+declares more keeps these four. OMSI 2 skips the keyword and runs the vehicle's `.osc` scripts as
+ever; a vehicle can have both.
+
 ### Where plugins live
 
 | Path | The plugin's name | Its data folder |
@@ -316,7 +338,8 @@ end)
 F10 gives the panels the mouse; a click on the button sounds the horn. The whole example is
 [`docs/examples/plugins/trip_panel.lua`](examples/plugins/trip_panel.lua).
 
-`omsi.ui.version` is `5` (`4` before `grab`, `3` before boxes, stop lists and the other
+`omsi.ui.version` is `6` (`5` before a navigator panel in the whole frame and the `map`
+element, `4` before `grab`, `3` before boxes, stop lists and the other
 elements and keys marked 4 below, `2` before the navigator's board, `1` before the controls):
 test `if omsi.ui and omsi.ui.version >= 2` in a plugin that should also run in an older openOMSI.
 The panels are the plugin's own: one plugin cannot change or remove another's, and when the
@@ -341,6 +364,7 @@ omsi.ui.set("trip", {
   clickable = false,          -- true: a click anywhere on it is ui_click(id, nil)
   draggable = false,          -- true: while the panels have the mouse it can be moved by its free parts
   grab = false,               -- true: it takes its clicks even while the panels do not have the mouse (ui.version 5)
+  frame = false,              -- with anchor = "navigator": the navigator's whole frame, not the board under its map (ui.version 6)
   children = { ... },         -- elements, top to bottom
 })
 ```
@@ -380,6 +404,31 @@ panel came to, in the panel's pixels, and whether the panel in the board is this
 panel taller than the room is cut off at the bottom (what is cut off takes no click either), so
 a plugin can leave out rows that do not fit.
 
+With `frame = true` (`omsi.ui.version` 6) the panel fills the navigator's whole frame instead:
+from its top, as wide as the navigator and as tall as the panel comes to (as far as the window
+has room), on the navigator's card with its rounded corners - in the panel's `background` where
+it gives one, which the navigator paints as its card (with its corners and its opacity setting),
+not the panel as a square of its own. The map, the place row and the
+stop list make way for it; the map shows only where the panel has a `map` element, with its
+own rounded corners, and the navigator's cards over it (the next turn, the clock, the speed,
+the next stop) unless the element says `cards = false`. The navigator stays the navigator: it
+is moved and sized as before, Shift+N shows and hides it (there is no lower part to open), and
+a press on the map or on a part of the panel that takes no click is the navigator's - a drag
+moves it, a click opens the city map. A `grab` panel there takes clicks without the mouse on
+its buttons and other clickable parts alone. `omsi.ui.dock()` then gives the whole frame: its
+width, the most height there is room for, the height the panel came to, and `true` as its
+fifth value (a game that does not know `frame` lays the panel out under the map, leaves the
+`map` element out and gives no fifth value: a plugin can test for it rather than for a
+version).
+
+```lua
+omsi.ui.set("phone", { anchor = "navigator", frame = true, grab = true, padding = 10, children = {
+  { type = "text", text = "Line 5 → Hauptbahnhof", weight = "bold" },
+  { type = "map", height = 200, cards = false },
+  { type = "button", id = "next", text = "Next stop: Markt 09:14" },
+} })
+```
+
 #### Elements
 
 Every element can have an `id`, a `color` and `visible = false` (left out, no room kept).
@@ -394,6 +443,7 @@ Every element can have an `id`, a `color` and `visible = false` (left out, no ro
 | `box` (4) | `children`, `gap` (default 4), `color` (default amber) | its children stacked in a box tinted with `color`, a stripe of it on the left: a note, an advice |
 | `stops` (4) | `stops` (`{ { name, time, expected, expected_color, state, tag }, ... }`, up to 128), `size` (13), `color` (the rail, default amber) | stops on a rail, a row each: `state` `"done"` (behind the bus: grey), `"now"` (the one it heads for: marked, bold) or `"ahead"` (the default); `time` on the right, `expected` before it in `expected_color`, and `tag` (`"terminus"`) before them |
 | `divider` | `color` | a thin line (in a row: upright) |
+| `map` (6) | `height` (default: the navigator's own map's, 0.8 times the width), `cards` (default `true`) | in a panel that fills the navigator's frame, the navigator's map there (with its cards over it unless `cards = false`); elsewhere empty room of its height |
 | `space` | `size` (default 8) | empty room (in a row: across) |
 | `button` | `id` (needed), `text`, `icon`, `color` | a button 34 high, across the panel (in a row as wide as its label, or what it grows to); a click on it is `ui_click(panel id, button id)` |
 | `image` | `src` (a PNG, JPEG, BMP or TGA of the plugin's folder), `width`, `height` (default 64) | the picture, made smaller to fit the width it has |
@@ -718,6 +768,22 @@ On macOS, helpers extracted from ZIP files may need their executable bit restore
 | `omsi.map.tiles()` | list of tables | The map's tiles: `{x, y, file, loaded}` (numbered as global.cfg's `[map]` list). | 0.2.22 |
 | `omsi.map.to_world(tile_x, tile_y, local_x, local_y)` | x, y | A place given by its tile and the metres in it, in map coordinates. | 0.2.22 |
 
+#### Scenery objects (for scripts a .sco names)
+
+| Function | Returns | What it does | Since |
+| --- | --- | --- | --- |
+| `omsi.object.info(id)` | table | `{id, type, x, y, z, heading, active, distance}` of an object: its type (the `.sco` file's name), where it stands (map coordinates), the way it faces (compass degrees), whether it is in the script's range and how far the listener is from it (m). | 0.2.22 |
+| `omsi.object.list()` | list of numbers | The ids of the objects this script drives that are loaded now (those within its range are active). | 0.2.22 |
+| `omsi.object.meshes(id)` | list of strings | The mesh files of an object, in the order the scripts number them from 1. | 0.2.22 |
+| `omsi.object.set_mesh(id, mesh, [transform])` | boolean | Moves, turns and scales one mesh of an object over what its animations do. `mesh` is its number from 1 or its file name; `transform` is `{x, y, z, rx, ry, rz, sx, sy, sz, px, py, pz}`: a move in metres, a turn about the x, y and z axes in degrees (z up, positive counter-clockwise seen from above), a scale, all about the point (px, py, pz) of the mesh, every key optional. Without a table the mesh is as the model has it. Objects with a script are redrawn every frame; moving a mesh costs nothing more. | 0.2.22 |
+| `omsi.object.set_str(id, name, value)` | boolean | Sets a string variable of an object (a display's text, a texture's name). | 0.2.22 |
+| `omsi.object.set_var(id, name, value)` | boolean | Sets a script variable of an object, which its `[newanim]` animations, `[visible]` conditions, materials, lamps and sounds read; false when it has none of that name. | 0.2.22 |
+| `omsi.object.set_vars(id, values)` | integer | Sets many variables of an object at once (a table name -> number); how many it has. | 0.2.22 |
+| `omsi.object.set_visible(id, mesh, [visible])` | boolean | Shows or hides one mesh of an object whatever its `[visible]` conditions say; without `visible` the conditions decide again. | 0.2.22 |
+| `omsi.object.str(id, name)` | string or nil | A string variable of an object. | 0.2.22 |
+| `omsi.object.trigger(id, name)` | boolean | Runs a `{trigger:name}` of the object's own `.osc` script; false when it has none. | 0.2.22 |
+| `omsi.object.var(id, name)` | number or nil | A script variable of an object (those its `[varnamelist]` declares, and the builtin ones: `Switch`, `InUse`, `NightlightA` ...); `nil` when it has none of that name. | 0.2.22 |
+
 #### AI traffic
 
 | Function | Returns | What it does | Since |
@@ -824,7 +890,7 @@ On macOS, helpers extracted from ZIP files may need their executable bit restore
 | --- | --- | --- | --- |
 | `omsi.message(text, [seconds])` | nil | A line of text on the screen (5 seconds when not given). *Permission: `ui`.* | 0.1.5 |
 | `omsi.ui.clear()` | nil | Removes every panel of the plugin. *Permission: `ui`.* | 0.2.21 |
-| `omsi.ui.dock()` | width, room, height, mine | The navigator's board, where a panel with `anchor = "navigator"` goes, in that panel's pixels: its width, the most height there is room for, the height the panel there came to (0 before it is laid out; more than `room`: it is cut off at the bottom), and whether that panel is this plugin's (the first one asked for has the board, another waits). Nothing while the navigator shows no board: it is off, or Shift+N put its lower part away. | 0.3.36 |
+| `omsi.ui.dock()` | width, room, height, mine, frame | The navigator's board, where a panel with `anchor = "navigator"` goes, in that panel's pixels: its width, the most height there is room for, the height the panel there came to (0 before it is laid out; more than `room`: it is cut off at the bottom), whether that panel is this plugin's (the first one asked for has the board, another waits), and whether it fills the navigator's whole frame (`frame = true`, ui version 6; false under the map, and nothing in an older game). Nothing while the navigator shows no board: it is off, or Shift+N put its lower part away. | 0.3.36 |
 | `omsi.ui.focus(on)` | boolean | `true`: the panels get the mouse (the cursor shows, a click goes to the panel under it and none to the bus); `false`, Esc or a menu of the game gives it back. Returns the new state. *Permission: `ui`.* | 0.2.21 |
 | `omsi.ui.focused()` | boolean | Whether the panels have the mouse. | 0.2.21 |
 | `omsi.ui.moved(panel)` | dx, dy | How far the player dragged a panel from where its table puts it (pixels). | 0.2.22 |
@@ -1040,6 +1106,10 @@ On macOS, helpers extracted from ZIP files may need their executable bit restore
 | `lan_leave` | `id`, `name` | A player left the LAN session. | 0.2.22 |
 | `lan_message` | `from`, `data` | The same plugin on another player's game sent this one a message (`lan.send`): the player's id and the text. | 0.2.22 |
 | `lan_chat` | `name`, `text` | A line was said in the LAN session's chat (by another player or this one). | 0.2.22 |
+| `object_init` | `id`, `type`, `x`, `y`, `z`, `heading` | A scenery object this script drives came within its range (once, again if it leaves and comes back): the map's id of the object, its type (the `.sco` file's name), where it stands and the way it faces. Only a script a `.sco` names with `[lua_script]` hears the `object_*` events. | 0.2.22 |
+| `object_frame` | `id`, `dt` | A frame of an object this script drives, while it is in range; `dt` is the game seconds since the last frame of that object (at the rate of the `.sco`'s `[lua_rate]`, else every game frame). | 0.2.22 |
+| `object_gone` | `id` | An object this script drives left its range or was unloaded with its tile; its state in the script can go. | 0.2.22 |
+| `object_click` | `id`, `event` | The player clicked the `[mouseevent]` of a mesh of an object this script drives. | 0.2.22 |
 
 <!-- api:end -->
 

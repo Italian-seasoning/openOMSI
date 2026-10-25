@@ -99,6 +99,10 @@ pub(crate) struct Integrations {
     pub(crate) presence: Option<crate::presence::Presence>,
     /// The OMSI plugins (`plugins/*.opl`), loaded with the first frame.
     pub(crate) plugins: Option<omsi_plugin::Plugins>,
+    /// The vehicle (its file) whose `[vehicle_script]` scripts are running as plugins.
+    pub(crate) vehicle_scripts_of: Option<std::path::PathBuf>,
+    /// The scenery objects whose Lua scripts run (see `plugin_io::object`).
+    pub(crate) object_scripts: crate::plugin_io::object::ObjectScripts,
 }
 
 /// How the frames go and what is measured or scripted about them: the frame rate, the
