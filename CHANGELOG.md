@@ -8,6 +8,10 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Route arrow texts glow at night (Enhanced)**: the street and stop names on the map's route
+  arrows (`[helparrow]` objects and the helpers the game puts down) are their own light, as a
+  display's text is, so they stay readable and shine in the dark instead of going dim with the
+  scenery around them.
 - **A modern engine for HTML screens (opt-in)**: a page that puts
   `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
   `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,

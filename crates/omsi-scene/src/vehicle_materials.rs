@@ -379,9 +379,16 @@ pub(super) fn text_alpha(materials: &[omsi_o3d::Material], slot: usize, override
 /// not stays dark at night. Made without it, the arrows' street and stop names went black
 /// after dusk on arrows that shone.
 pub(super) fn text_material(renderer: &Renderer, scene: &mut Scene, tex: TextureId, alpha: AlphaMode, slot_ov: &[&MaterialDef], slot_mat: Option<&omsi_o3d::Material>) -> MaterialId {
+    text_material_lit(renderer, scene, tex, alpha, slot_ov, slot_mat, false)
+}
+
+/// `text_material`; `lit`: the text is its own light (a route arrow's street and stop
+/// names, see `helper_text_key`), as a display's text is - it shines at night instead of
+/// taking only the little light that falls on it, and its glow blooms.
+pub(super) fn text_material_lit(renderer: &Renderer, scene: &mut Scene, tex: TextureId, alpha: AlphaMode, slot_ov: &[&MaterialDef], slot_mat: Option<&omsi_o3d::Material>, lit: bool) -> MaterialId {
     let extra = material_extra(slot_ov, None, None, [0.0; 4]);
     let plain = MaterialExtra::default();
-    let border_only = MaterialExtra { border: extra.border, ..plain.clone() };
+    let border_only = MaterialExtra { border: extra.border, display: lit, ..plain.clone() };
     renderer.address_next.set(tex_addressing(slot_ov.iter().copied()));
     let emissive = text_emissive(slot_ov, slot_mat);
     renderer.add_material_extra(scene, Some(tex), alpha, [1.0; 4], false, None, None, None, None, emissive, border_only)
@@ -397,6 +404,11 @@ pub(super) fn text_emissive(slot_ov: &[&MaterialDef], slot_mat: Option<&omsi_o3d
 pub(super) fn text_material_key(base: String, slot_ov: &[&MaterialDef], slot_mat: Option<&omsi_o3d::Material>) -> String {
     let border = material_extra(slot_ov, None, None, [0.0; 4]).border;
     format!("{base}|{:?}|{border:?}|{:?}", tex_addressing(slot_ov.iter().copied()), text_emissive(slot_ov, slot_mat))
+}
+
+/// The key of a route arrow's text: lit, so apart from the same text on a plain slot.
+pub(super) fn helper_text_key(key: String) -> String {
+    format!("{key}|lit")
 }
 
 pub(super) fn scenery_text_key(tt: &omsi_model::TextTexture, text: &str, alpha: AlphaMode) -> String {
