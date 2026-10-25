@@ -47,8 +47,8 @@ const RAIN_LAYERS = array<vec3<f32>, 3>(vec3<f32>(5.0, -2.5, 6.0), vec3<f32>(14.
 // precipitation's roof map has it (none without the map). Each splash takes a new place
 // round the camera every time it comes round again; the most of them close by.
 fn splash(vid: u32, s: u32) -> RainOut {
-    let corners = array<vec2<f32>, 6>(vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-    let c = corners[vid % 6u];
+    // (a strip of four vertices)
+    let c = vec2<f32>(f32(i32(vid & 1u) * 2 - 1), f32(i32(vid >> 1u) * 2 - 1));
     var out: RainOut;
     out.clip = vec4<f32>(0.0, 0.0, 2.0, 1.0);
     out.uv = vec2<f32>(0.0);
@@ -104,8 +104,7 @@ fn vs_rain(@builtin(vertex_index) vid: u32, @builtin(instance_index) k: u32) -> 
         return splash(vid, k - u32(rp.view.w));
     }
     // across (-1, 1) and along (0 the tail, 1 the head)
-    let corners = array<vec2<f32>, 6>(vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 0.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0));
-    let c = corners[vid % 6u];
+    let c = vec2<f32>(f32(i32(vid & 1u) * 2 - 1), f32(vid >> 1u));
     var out: RainOut;
     out.clip = vec4<f32>(0.0, 0.0, 2.0, 1.0);
     out.uv = vec2<f32>(0.0);
@@ -130,7 +129,9 @@ fn vs_rain(@builtin(vertex_index) vid: u32, @builtin(instance_index) k: u32) -> 
     let world_cam = camera.cam_pos.xyz + vec3<f32>(camera.world_origin.xy, 0.0);
     let vel = vec3<f32>(rp.wind.xy, -fall);
     let lo = world_cam + vec3<f32>(-lh.x, -lh.x, lh.y);
-    let q = lo + (((h1.xyz * size + vel * t - lo) % size) + size) % size;
+    // (the field repeats every `size`: the place wrapped into one copy of it)
+    let wrapped = (h1.xyz * size + vel * t - lo) / size;
+    let q = lo + (wrapped - floor(wrapped)) * size;
     let p = q - vec3<f32>(camera.world_origin.xy, 0.0);
     // a denser layer thins out with the distance from the eye, over the whole of its reach,
     // into the thinner one round it: faded only at its edges, it stood round the camera as a

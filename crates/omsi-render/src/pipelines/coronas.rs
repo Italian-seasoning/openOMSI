@@ -169,6 +169,8 @@ pub(crate) struct Precip {
     pl: wgpu::PipelineLayout,
     label: &'static str,
     vs: &'static str,
+    /// Its quads are strips of four vertices (the rain's), not lists of six.
+    strip: bool,
 }
 
 const PREMULTIPLIED_SNOW: wgpu::BlendState = wgpu::BlendState {
@@ -178,15 +180,15 @@ const PREMULTIPLIED_SNOW: wgpu::BlendState = wgpu::BlendState {
 
 impl Precip {
     pub(crate) fn snow(device: &wgpu::Device, camera_layout: &wgpu::BindGroupLayout, roof: &wgpu::TextureView) -> Precip {
-        Precip::new(device, camera_layout, roof, "snow", "vs_snow", snow_shader_source(), std::mem::size_of::<SnowUniform>())
+        Precip::new(device, camera_layout, roof, "snow", "vs_snow", snow_shader_source(), std::mem::size_of::<SnowUniform>(), false)
     }
 
     pub(crate) fn rain(device: &wgpu::Device, camera_layout: &wgpu::BindGroupLayout, roof: &wgpu::TextureView) -> Precip {
-        Precip::new(device, camera_layout, roof, "rain", "vs_rain", rain_shader_source(), std::mem::size_of::<RainUniform>())
+        Precip::new(device, camera_layout, roof, "rain", "vs_rain", rain_shader_source(), std::mem::size_of::<RainUniform>(), true)
     }
 
     /// (`roof`: the precipitation's roof map, `passes::precip_map`)
-    fn new(device: &wgpu::Device, camera_layout: &wgpu::BindGroupLayout, roof: &wgpu::TextureView, label: &'static str, vs: &'static str, source: String, size: usize) -> Precip {
+    fn new(device: &wgpu::Device, camera_layout: &wgpu::BindGroupLayout, roof: &wgpu::TextureView, label: &'static str, vs: &'static str, source: String, size: usize, strip: bool) -> Precip {
         let shader = compile_shader(device, wgpu::ShaderModuleDescriptor { label: Some(label), source: wgpu::ShaderSource::Wgsl(source.into()) });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(label),
@@ -214,7 +216,7 @@ impl Precip {
             bind_group_layouts: &[Some(camera_layout), Some(&layout)],
             immediate_size: 0,
         });
-        Precip { shader, buf, bind_group, pl, label, vs }
+        Precip { shader, buf, bind_group, pl, label, vs, strip }
     }
 
     pub(crate) fn pipeline(&self, device: &wgpu::Device, f: wgpu::TextureFormat, fs: &str, msaa: u32) -> wgpu::RenderPipeline {
@@ -222,6 +224,7 @@ impl Precip {
         let targets = color_targets(f, Some(PREMULTIPLIED_SNOW), wgpu::ColorWrites::COLOR, false, false);
         no_vertex_pipeline(self.label, &self.pl, &self.shader, fs, &targets)
             .vs(self.vs)
+            .strip(self.strip)
             .depth(depth_test(wgpu::CompareFunction::GreaterEqual))
             .samples(msaa)
             .create(device)

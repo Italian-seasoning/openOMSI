@@ -399,7 +399,7 @@ impl Renderer {
             pass.set_pipeline(rain);
             pass.set_bind_group(0, scene.camera_bind_group.as_ref().unwrap(), &[]);
             pass.set_bind_group(1, &self.lights.rain_bind_group, &[]);
-            pass.draw(0..6, 0..counts.iter().sum::<u32>());
+            pass.draw(0..4, 0..counts.iter().sum::<u32>());
         }
         // light coronas, additive: the world's, then the vehicle the camera is in -
         // drawn over them as Omsi.exe draws it last (see `cab_items`) - then its own
