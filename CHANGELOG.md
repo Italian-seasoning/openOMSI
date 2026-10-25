@@ -461,6 +461,15 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### Fixes
 
+- **The people boarding a timetable bus walk in to their seats**: in any bus but the player's they
+  stood in their seats the moment they stepped through the door, a jump in the saloon of every bus
+  that passed a stop. They now walk along the bus's own paths to the place reserved, as in the
+  player's bus (a bus without paths to the place keeps the jump).
+- **Timetable buses no longer stand at the stops that have no time of their own**: a bus that came to
+  such a stop early waited for the timetable's estimate (the running time shared out by distance)
+  up to two minutes, so a third of the buses stood over a minute with nobody getting on or off. They
+  now wait the length of a boarding at the most; the stops the timetable gives a time, the first and
+  the last stop keep their wait. `OMSI_DEBUG_STOPS` also logs how long each bus stood and why.
 - **The launcher's bus preview is no longer misted over**: the bus is made for it (the
   showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
   vehicle starts at without a weather. The
