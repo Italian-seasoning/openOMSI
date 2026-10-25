@@ -276,14 +276,16 @@ fn gathered_air_light(at: vec2<f32>, len: f32) -> vec3<f32> {
     let f = hp - floor(hp);
     // (the last row is the sun's, see `fs_fog_lamps`)
     let hd = vec2<i32>(textureDimensions(t_fog)) - vec2<i32>(1, 2);
-    // (nothing in the four nearest half-size rays: no lamp's cone and no shaft here - most of
-    // a picture in clear air - and the sixteen taps would only add up zeros)
-    let n00 = textureLoad(t_fog, clamp(base, vec2<i32>(0), hd), 0).rgb;
-    let n10 = textureLoad(t_fog, clamp(base + vec2<i32>(1, 0), vec2<i32>(0), hd), 0).rgb;
-    let n01 = textureLoad(t_fog, clamp(base + vec2<i32>(0, 1), vec2<i32>(0), hd), 0).rgb;
-    let n11 = textureLoad(t_fog, clamp(base + vec2<i32>(1, 1), vec2<i32>(0), hd), 0).rgb;
-    let near = max(max(abs(n00), abs(n10)), max(abs(n01), abs(n11)));
-    if (max(near.r, max(near.g, near.b)) < 2e-4) {
+    // (not one of the sixteen half-size rays holds any light: no lamp's cone and no shaft
+    // here - most of a picture in clear air - and the weighted sum below would only add up
+    // zeros, so it is not worked out. All sixteen, the whole footprint of the tent: a lit
+    // ray at its edge still lights the pixel)
+    var lit = false;
+    for (var k = 0; k < 16; k = k + 1) {
+        let o = vec2<i32>(k & 3, k >> 2) - vec2<i32>(1);
+        lit = lit || any(textureLoad(t_fog, clamp(base + o, vec2<i32>(0), hd), 0).rgb != vec3<f32>(0.0));
+    }
+    if (!lit) {
         return vec3<f32>(0.0);
     }
     var sum = vec3<f32>(0.0);

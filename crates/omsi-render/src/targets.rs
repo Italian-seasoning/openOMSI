@@ -78,9 +78,6 @@ pub(crate) struct AoTargets {
     pub(crate) depth_tex: wgpu::Texture,
     pub(crate) ao_view: wgpu::TextureView,
     pub(crate) blur_view: wgpu::TextureView,
-    /// The ground albedo picture (`fs_ground`), full size: the camera group's slot 8 holds it
-    /// while the AO is off (`Renderer::ground_should_bind`).
-    pub(crate) ground_view: wgpu::TextureView,
     /// The last frame's picture (absolute radiance) for the bounced light.
     pub(crate) hist_view: wgpu::TextureView,
     /// Whether `hist_view` is a picture (not the single texel of the other pipelines).
@@ -169,6 +166,33 @@ impl Renderer {
     }
 
     /// The ambient-occlusion textures for a target of this size (rebuilt on resize).
+    /// The ground albedo picture at this size when `wanted`, let go of when not. True when it
+    /// came, went or changed size (the camera group must be made again).
+    pub(crate) fn ensure_ground(&mut self, w: u32, h: u32, wanted: bool) -> bool {
+        match (&self.targets.ground, wanted) {
+            (None, false) => false,
+            (Some((size, _)), true) if *size == (w, h) => false,
+            (_, false) => {
+                self.targets.ground = None;
+                true
+            }
+            (_, true) => {
+                let view = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("ground albedo"),
+                    size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: pipelines::scene::GROUND_FORMAT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                }).create_view(&Default::default());
+                self.targets.ground = Some(((w, h), view));
+                true
+            }
+        }
+    }
+
     pub(crate) fn ensure_ao(&mut self, w: u32, h: u32, bounce: bool) -> bool {
         if self.targets.ao.as_ref().map(|a| a.size == (w, h) && (a.bounce || !bounce)).unwrap_or(false) {
             return false;
@@ -237,16 +261,6 @@ impl Renderer {
         let depth_view = depth.create_view(&Default::default());
         let ao_view = ao.create_view(&Default::default());
         let blur_view = blur.create_view(&Default::default());
-        let ground_view = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("ground albedo"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: pipelines::scene::GROUND_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        }).create_view(&Default::default());
 
         let bg = |label: &str, tex: &wgpu::TextureView| {
             self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -306,7 +320,6 @@ impl Renderer {
             depth_tex: depth.clone(),
             ao_view,
             blur_view,
-            ground_view,
             hist_view,
             bounce,
             ssao_bg,
@@ -553,6 +566,9 @@ pub(crate) struct Targets {
     pub(crate) msaa_targets: HashMap<(u32, u32), (Option<wgpu::TextureView>, wgpu::TextureView)>,
     /// Screen-space ambient occlusion: depth prepass and AO textures of the window's size.
     pub(crate) ao: Option<AoTargets>,
+    /// The ground albedo picture (`fs_ground`) of the window's size, made only while the
+    /// ground pass can run (`Renderer::ground_eligible`): the camera group's slot 8 holds it.
+    pub(crate) ground: Option<((u32, u32), wgpu::TextureView)>,
     /// Enhanced path: the HDR targets per size, the post pipelines and their resources.
     pub(crate) hdr_targets: HashMap<(u32, u32), HdrTargets>,
     pub(crate) scale_targets: HashMap<(u32, u32), (wgpu::TextureView, wgpu::BindGroup)>,

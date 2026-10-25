@@ -53,7 +53,19 @@ impl Renderer {
     /// the AO's there (the ambient occlusion is off, no traced lighting). The camera group is
     /// made again when this changes.
     pub(crate) fn ground_should_bind(&self) -> bool {
-        self.ground_pipelines.is_some() && !self.options.ssao && self.rt.is_none() && self.targets.ao.is_some()
+        self.ground_eligible()
+            && self.targets.ground.as_ref().zip(self.targets.ao.as_ref()).is_some_and(|(g, a)| g.0 == a.size)
+    }
+
+    /// Whether the ground picture can be drawn at all with these settings (it is made, and
+    /// takes its memory, only then): the Enhanced path's pipelines, the ambient occlusion
+    /// off, no traced lighting, one sample.
+    pub(crate) fn ground_eligible(&self) -> bool {
+        self.ground_pipelines.is_some()
+            && !self.options.ssao
+            && self.rt.is_none()
+            && self.options.msaa <= 1
+            && !omsi_cfg::flags::OMSI_NO_GROUND_PASS.is_set()
     }
 
     /// The ground picture's draws out of the frame's main batches, or none when the frame
@@ -82,13 +94,13 @@ impl Renderer {
 
     /// The ground picture, before the main pass: the base, then its layers over it.
     pub(crate) fn encode_ground(&self, encoder: &mut wgpu::CommandEncoder, scene: &Scene, plan: &GroundPlan, timers: &mut PassTimers) {
-        let (Some(pipes), Some(ao)) = (self.ground_pipelines.as_ref(), self.targets.ao.as_ref()) else {
+        let (Some(pipes), Some(ao), Some((_, ground))) = (self.ground_pipelines.as_ref(), self.targets.ao.as_ref(), self.targets.ground.as_ref()) else {
             return;
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("ground albedo"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &ao.ground_view,
+                view: ground,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },

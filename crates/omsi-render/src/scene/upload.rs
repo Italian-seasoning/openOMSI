@@ -327,7 +327,7 @@ impl Renderer {
                             .as_ref()
                             .and_then(|r| r.targets.as_ref())
                             .map(|t| &t.out)
-                            .or(self.targets.ao.as_ref().map(|a| if ground_bound { &a.ground_view } else { &a.blur_view }))
+                            .or(self.targets.ao.as_ref().map(|a| match self.targets.ground.as_ref().filter(|_| ground_bound) { Some((_, g)) => g, None => &a.blur_view }))
                             .unwrap_or(&self.white_texture.view),
                     ),
                 },
