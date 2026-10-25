@@ -101,6 +101,7 @@ const graphics = {
         { type: 'slider', key: 'led_mips', label: 'LED mip strength', min: 0, max: 4, step: 0.05, def: 1.3, format: (v) => (v < 0.005 ? t('Off') : v.toFixed(2)), store: snap(0.05), when: enhanced },
         // (the `[isshadow]` blob under a vehicle is drawn in every mode, the vanilla one included)
         { type: 'toggle', key: 'shadow_blobs', label: "OMSI's shadow meshes (under vehicles)" },
+        { type: 'toggle', key: 'lamp_shadows', label: "Street lamps' shadows", when: enhanced },
         { type: 'slider', key: 'reflections', label: 'Reflection maps (paint, chrome, glass)', min: 0, max: 1, step: 0.05, def: 1, format: (v) => (v < 0.005 ? t('Off') : pct(v)), store: snap(0.05), when: (s) => !traced(s) },
         { type: 'toggle', key: 'clouds', label: 'Clouds' },
         // (only the enhanced modes march volumetric clouds; the vanilla ones are a texture)
@@ -463,6 +464,6 @@ export const SETTINGS_TABS = [graphics, driving, camera, sound, gameplay, genera
 
 /** The settings a saved graphics profile holds (`GRAPHICS_PROFILE_KEYS`). */
 export const GRAPHICS_PROFILE_KEYS = [
-  'graphics', 'msaa', 'render_scale', 'upscaler', 'fsr_quality', 'fsr_sharpness', 'anisotropy', 'shadow_size', 'ssao', 'shadows', 'shadow_casters', 'detail_textures', 'night_brightness', 'led_glow', 'led_mips', 'shadow_blobs', 'reflections', 'clouds', 'cloud_quality', 'street_light', 'rain_quality', 'vehicle_smoke', 'puddles', 'windy_trees',
+  'graphics', 'msaa', 'render_scale', 'upscaler', 'fsr_quality', 'fsr_sharpness', 'anisotropy', 'shadow_size', 'ssao', 'shadows', 'shadow_casters', 'detail_textures', 'night_brightness', 'led_glow', 'led_mips', 'shadow_blobs', 'lamp_shadows', 'reflections', 'clouds', 'cloud_quality', 'street_light', 'rain_quality', 'vehicle_smoke', 'puddles', 'windy_trees',
   'vsync', 'max_fps', 'view_distance', 'max_obj_dist', 'min_obj_size', 'mirror_size', 'mirror_refresh', 'mirror_quality', 'mirror_hud_every_frame', 'video_memory', 'texture_compression', 'gpu_texture_compression',
 ];

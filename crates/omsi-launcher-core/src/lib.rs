@@ -18,6 +18,7 @@ pub mod optimise;
 mod hof_sync;
 mod file_dialog;
 pub mod i18n;
+pub mod user_data;
 
 pub use file_dialog::{pick_file, pick_folder, pick_hofs, pick_mod};
 pub use hof_sync::{add_shared_hofs, share_map_hofs, MapHofOffer};
@@ -48,7 +49,7 @@ pub fn data_dir() -> PathBuf {
     // (made once: asked for dozens of times a second - the launcher's frames, its polls - and
     // made each time, two system calls for a folder that was there)
     static MADE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
-    let d = home().join(".openomsi");
+    let d = omsi_cfg::user_data::data_dir();
     let mut made = MADE.lock().unwrap_or_else(|e| e.into_inner());
     if made.as_ref() != Some(&d) && std::fs::create_dir_all(&d).is_ok() {
         *made = Some(d.clone());
@@ -68,11 +69,13 @@ fn is_omsi_root(p: &Path) -> bool {
 
 /// Where the game binary is: the configured path, next to the launcher, or the
 /// development build in the source tree.
-fn find_game(configured: &str) -> Option<PathBuf> {
+pub fn find_game(configured: &str) -> Option<PathBuf> {
     let mut cands: Vec<PathBuf> = Vec::new();
     // the game that came with this launcher first: a path remembered from an older
     // installation (`target/release/omsi` of the days before the rename) kept starting an
-    // old build after every update - the new pause menu "was not there" on macOS
+    // old build after every update - the new pause menu "was not there" on macOS; a second
+    // install, or a test build unpacked elsewhere, sharing `launcher.json` must not start
+    // (and move the data folder to) the other one's game either
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
             cands.push(dir.join(if cfg!(windows) { "openomsi.exe" } else { "openomsi" }));
@@ -142,6 +145,23 @@ fn find_root(configured: &str) -> Option<PathBuf> {
 
 pub fn load_config() -> Config {
     let mut c: Config = std::fs::read_to_string(config_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    if let Some(game) = find_game(&c.game) {
+        static INITIALIZED: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+        let mut initialized = INITIALIZED.lock().unwrap_or_else(|e| e.into_inner());
+        if initialized.as_ref() != Some(&game) {
+            let previous = data_dir();
+            match omsi_cfg::user_data::initialize_for(&game) {
+                Ok(dir) => {
+                    *initialized = Some(game);
+                    if dir != previous {
+                        c = std::fs::read_to_string(dir.join("launcher.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(c);
+                    }
+                }
+                Err(e) => log_to_file(&format!("Could not initialize .openomsi-config: {e}")),
+            }
+        }
+    }
     if let Some(r) = find_root(&c.root) {
         c.root = r.to_string_lossy().to_string();
     }
@@ -2335,7 +2355,7 @@ pub fn settings_from_text_on(text: Option<&str>, phone: bool) -> Value {
             "gpu_texture_compression" => v[&k] = json!(!matches!(val.trim().to_ascii_lowercase().as_str(), "0" | "off" | "no" | "false" | "disabled")),
             "max_fps" => v[&k] = json!(val.parse::<f64>().map(|x| x as i64).unwrap_or(0)),
             "max_obj_dist" => v[&k] = if val.eq_ignore_ascii_case("auto") { json!("auto") } else { json!(val.parse::<f64>().map(|m| (m.round() as i64).to_string()).unwrap_or_else(|_| "auto".into())) },
-            "ssao" | "shadows" | "shadow_blobs" | "navigator" | "enhanced" | "triple_screen" | "triple_span" | "triple_hud_center" | "vr" | "vr_desktop_mirror" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_objects" | "collision_pedestrians" | "head_movement" | "driverview_smooth" | "hands_in_cab" | "alt_view" | "precision_zoom" => v[&k] = json!(b(val)),
+            "ssao" | "shadows" | "shadow_blobs" | "lamp_shadows" | "navigator" | "enhanced" | "triple_screen" | "triple_span" | "triple_hud_center" | "vr" | "vr_desktop_mirror" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_objects" | "collision_pedestrians" | "head_movement" | "driverview_smooth" | "hands_in_cab" | "alt_view" | "precision_zoom" => v[&k] = json!(b(val)),
             "maintenance" | "ai_unsched_factor" | "ai_max_scheduled" | "standing_chance" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| x.max(0.0) as i64).unwrap_or(0)),
             // (-1: no parked cars at all, #864)
             "ai_max_parked" => v[&k] = json!(val.parse::<f64>().map(|x| x.max(-1.0) as i64).unwrap_or(0)),
@@ -2523,8 +2543,8 @@ pub fn save_settings(v: &Value) -> Result<()> {
 
 /// The settings a graphics profile holds: what the Graphics tab shows, except the machine's
 /// own (fullscreen, graphics API).
-pub const GRAPHICS_PROFILE_KEYS: [&str; 36] = [
-    "graphics", "msaa", "render_scale", "upscaler", "fsr_quality", "fsr_sharpness", "anisotropy", "shadow_size", "ssao", "shadows", "shadow_casters", "detail_textures", "night_brightness", "led_glow", "led_mips", "shadow_blobs", "reflections", "clouds", "cloud_quality", "street_light", "rain_quality", "vehicle_smoke", "puddles", "windy_trees",
+pub const GRAPHICS_PROFILE_KEYS: [&str; 37] = [
+    "graphics", "msaa", "render_scale", "upscaler", "fsr_quality", "fsr_sharpness", "anisotropy", "shadow_size", "ssao", "shadows", "shadow_casters", "detail_textures", "night_brightness", "led_glow", "led_mips", "shadow_blobs", "lamp_shadows", "reflections", "clouds", "cloud_quality", "street_light", "rain_quality", "vehicle_smoke", "puddles", "windy_trees",
     "vsync", "max_fps", "view_distance", "max_obj_dist", "min_obj_size", "mirror_size", "mirror_refresh", "mirror_quality", "mirror_hud_every_frame", "video_memory", "texture_compression", "gpu_texture_compression",
 ];
 
@@ -2664,7 +2684,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("precision_zoom", false),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nnav_ai={}\nnav_surface={}\nnav_light={}\nnav_3d={}\nnav_widget={}\nnav_size={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nshadow_blobs={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nupdate_notify={}\npresence={}\nreflections={}\nmouse_sens={}\nmouse_pedal_strength={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nred_steer_spd={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nseat_pitch_deg={}\nsteer_look={}\nhead_tracking={}\nhead_tracking_yaw_sens={}\nhead_tracking_pitch_sens={}\nhead_tracking_roll_sens={}\nhead_tracking_x_sens={}\nhead_tracking_y_sens={}\nhead_tracking_z_sens={}\nhead_tracking_invert_yaw={}\nhead_tracking_invert_pitch={}\nhead_tracking_invert_roll={}\nhead_tracking_invert_x={}\nhead_tracking_invert_y={}\nhead_tracking_invert_z={}\nff_enabled={}\nbrake_hold={}\nauto_clutch={}\nmomentary_gears={}\nauto_shift={}\nled_glow={}\nled_mips={}\nnight_brightness={}\nui_scale={}\nui_scale_window={}\nchat_size={}\nnotes={}\nmouse_steering={}\nmouse_right_off={}\nmouse_smooth={}\nmouse_hold={}\nblinker_cancel={}\nff_road_vib={}\nff_engine_vib={}\nff_fade={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nnav_ai={}\nnav_surface={}\nnav_light={}\nnav_3d={}\nnav_widget={}\nnav_size={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nshadow_blobs={}\nlamp_shadows={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nupdate_notify={}\npresence={}\nreflections={}\nmouse_sens={}\nmouse_pedal_strength={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nred_steer_spd={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nseat_pitch_deg={}\nsteer_look={}\nhead_tracking={}\nhead_tracking_yaw_sens={}\nhead_tracking_pitch_sens={}\nhead_tracking_roll_sens={}\nhead_tracking_x_sens={}\nhead_tracking_y_sens={}\nhead_tracking_z_sens={}\nhead_tracking_invert_yaw={}\nhead_tracking_invert_pitch={}\nhead_tracking_invert_roll={}\nhead_tracking_invert_x={}\nhead_tracking_invert_y={}\nhead_tracking_invert_z={}\nff_enabled={}\nbrake_hold={}\nauto_clutch={}\nmomentary_gears={}\nauto_shift={}\nled_glow={}\nled_mips={}\nnight_brightness={}\nui_scale={}\nui_scale_window={}\nchat_size={}\nnotes={}\nmouse_steering={}\nmouse_right_off={}\nmouse_smooth={}\nmouse_hold={}\nblinker_cancel={}\nff_road_vib={}\nff_engine_vib={}\nff_fade={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -2681,6 +2701,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("machine_translation", false),
         if v.get("shadow_casters").and_then(|x| x.as_str()) == Some("omsi") { "omsi" } else { "all" },
         b("shadow_blobs", true),
+        b("lamp_shadows", true),
         f("ctrl_deadzone", 0.0).clamp(0.0, 0.3),
         b("update_check", true),
         b("update_auto", false),

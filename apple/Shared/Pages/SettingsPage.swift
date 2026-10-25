@@ -125,6 +125,7 @@ struct SettingsPage: View {
                 SettingSlider(label: "LED mip strength", key: "led_mips", range: 0 ... 4, step: 0.05, fallback: 1.3) { $0 < 0.005 ? off : String(format: "%.2f", $0) }
             }
             SettingToggle(label: "OMSI's shadow meshes (under vehicles)", key: "shadow_blobs", fallback: true)
+            SettingToggle(label: "Street lamps' shadows", key: "lamp_shadows", fallback: true)
             if !traced { SettingSlider(label: "Reflection maps (paint, chrome, glass)", key: "reflections", range: 0 ... 1, step: 0.05, fallback: 1) { $0 < 0.005 ? off : pct($0) } }
             SettingToggle(label: "Clouds", key: "clouds", fallback: true)
             if enhanced && store.flag("clouds", true) {
