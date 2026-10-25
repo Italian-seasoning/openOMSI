@@ -96,13 +96,13 @@ mod tests {
     /// metres, and the lamps' shadow maps by the tile their record names and the saloon's visibility term
     /// with the ground no longer lit by the tile light map, and the street-scale
     /// occlusion, the bounced light and the lightning's light), and the textures read with FSR 1's mip bias, `camera.lod`,
-    /// and a script's screen never taken for a pane (#2927).
+    /// and a script's screen never taken for a pane (#2927), and the lamp tiles' taps in loops of fixed bounds.
     /// (with Unix line ends: a Windows checkout may turn the parts' into CRLF, as it did the
     /// single files', and the 0.2.31 release's Windows test failed on that alone)
     #[test]
     fn assembled_shaders_are_the_old_files() {
         let (scene, enhanced) = (super::SCENE.replace("\r\n", "\n"), super::ENHANCED.replace("\r\n", "\n"));
         assert_eq!((scene.len(), fnv1a(&scene)), (130_362, 0x57b1_11c7_f717_9d08));
-        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (94_897, 0x3e2a_389b_2a2f_84b0));
+        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (95_277, 0x7bed_6268_6f6d_1053));
     }
 }
