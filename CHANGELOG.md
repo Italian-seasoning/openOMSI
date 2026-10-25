@@ -461,6 +461,11 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### Fixes
 
+- **Enhanced clouds no longer turn to layered mush while driving fast**: every time the camera had
+  moved far enough for the sky to be drawn from a new point, the new picture of the sky was one
+  noisy sample of the cloud march and took seconds to clear; at speed a new one came before the
+  last had cleared, so the clouds stayed grainy and banded. The new picture is now the average of
+  four samples before it replaces the old one.
 - **The launcher's bus preview is no longer misted over**: the bus is made for it (the
   showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
   vehicle starts at without a weather. The
