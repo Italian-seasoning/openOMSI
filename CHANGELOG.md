@@ -32,6 +32,13 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 - **Wet roads and water mirror the street** (Enhanced): the sheen of a wet road and still water
   trace what stands round them in screen space at their Fresnel share, not only the pools - the
   lit windows and lamps of a street stream down a wet road at night.
+- **Choose where openOMSI keeps its data** (Setup › `.openomsi` folder): settings, profiles,
+  logs and caches can live in another folder, on another disk. A game and its launcher find the
+  folder through a pointer file beside the program (beside the `.app` on a Mac, so an update of
+  the bundle keeps it); a first start, or an installation that cannot be written, uses `~/.openomsi`
+  as before. Moving copies the folder first, in the background (leaving the page does not stop it),
+  and switches only when the copy is whole; a copy that fails leaves the old folder as it was. The
+  default `~/.openomsi` is kept after a move, because other copies of openOMSI may still use it.
 - **A modern engine for HTML screens (opt-in)**: a page that puts
   `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
   `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,

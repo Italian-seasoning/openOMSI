@@ -67,7 +67,7 @@ impl Pack {
 
     /// Where a downloaded pack goes: the user's openOMSI folder.
     pub fn user_dir() -> Option<PathBuf> {
-        std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(|h| PathBuf::from(h).join(".openomsi").join("ambience"))
+        omsi_cfg::user_data::base_dir().map(|d| d.join("ambience"))
     }
 
     /// Fetch the recordings in the background when there are none yet (a computer, the
