@@ -36,6 +36,14 @@ impl DestForm {
     }
 }
 
+/// The text the launcher typed for the displays (`--sign-route`, `--sign-line1/2`), if any;
+/// for the first bus of a run, not for buses placed later.
+pub(crate) fn from_args(args: &crate::cli::Args) -> Option<DestForm> {
+    let part = |s: &Option<String>| s.as_deref().map(str::trim).unwrap_or_default().to_string();
+    let form = DestForm { route: part(&args.sign_route), lines: [part(&args.sign_line1), part(&args.sign_line2)], said: None };
+    (!form.route.is_empty() || form.lines.iter().any(|l| !l.is_empty())).then_some(form)
+}
+
 /// The form opened, filled with what the bus shows.
 pub(crate) fn open(app: &mut crate::App) {
     let Some(p) = app.player.as_ref() else {
@@ -108,6 +116,12 @@ fn set(app: &mut crate::App, form: &DestForm, clear: bool) -> String {
         crate::game_lists::set_route_by_hand(app, &form.route);
     }
     let Some(p) = app.player.as_mut() else { return String::new() };
+    apply(p, form, clear)
+}
+
+/// The displays of `p` set to what the form holds (or emptied), the route number apart:
+/// that is `game_lists::set_route_on`'s.
+pub(crate) fn apply(p: &mut crate::player::Player, form: &DestForm, clear: bool) -> String {
     if clear {
         // (the route number off the matrix and the rollers as well)
         for name in ["SetLineTo", "Matrix_Nr", "Linie"] {

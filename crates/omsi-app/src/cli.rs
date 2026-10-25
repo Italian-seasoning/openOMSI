@@ -58,6 +58,15 @@ pub(crate) struct Args {
     /// Saved situations retain their cabin temperature.
     #[arg(long)]
     pub(crate) comfortable_cabin_on_start: bool,
+    /// Text for the destination display from the start: the route number (the matrix
+    /// shows any digits and letters) and the two destination lines of the form in the
+    /// quick menu. Without them the displays follow the duty.
+    #[arg(long)]
+    pub(crate) sign_route: Option<String>,
+    #[arg(long)]
+    pub(crate) sign_line1: Option<String>,
+    #[arg(long)]
+    pub(crate) sign_line2: Option<String>,
     /// An on-foot start defers the adjustment until its first placed bus loads.
     #[arg(skip)]
     pub(crate) pending_cabin_temperature: Arc<std::sync::atomic::AtomicBool>,

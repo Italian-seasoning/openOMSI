@@ -510,6 +510,7 @@ impl App {
                             p.vehicle.host.auto_clutch = if self.settings.auto_clutch { 1.0 } else { 0.0 };
                             p.load_sounds(&audio);
                             p.ibis_background = true;
+                            p.sign_text = crate::game_panels::dest_form::from_args(&self.args).filter(|_| !self.args.is_resuming());
                             // --autostart applies in the window too, not only offscreen
                             if self.args.autostart && !self.args.is_resuming() {
                                 let msg = p.start_up();

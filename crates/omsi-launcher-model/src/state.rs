@@ -153,6 +153,11 @@ pub struct Choice {
     pub schedule: bool,
     pub autostart: bool,
     pub comfortable_cabin_on_start: bool,
+    /// The destination display typed by hand (empty: the duty's own trip): route number
+    /// for the matrix and two lines of destination text.
+    pub sign_route: String,
+    pub sign_line1: String,
+    pub sign_line2: String,
     /// Start on foot (no bus of one's own until one is placed).
     pub on_foot: bool,
     /// off, host, join
@@ -190,6 +195,9 @@ impl Default for Choice {
             schedule: true,
             autostart: false,
             comfortable_cabin_on_start: false,
+            sign_route: String::new(),
+            sign_line1: String::new(),
+            sign_line2: String::new(),
             on_foot: false,
             lan_mode: "off".into(),
             lan_addr: String::new(),
@@ -712,6 +720,9 @@ impl State {
             schedule: Some(c.schedule),
             autostart: Some(c.autostart),
             comfortable_cabin_on_start: Some(c.comfortable_cabin_on_start),
+            sign_route: Some(c.sign_route.clone()).filter(|t| !t.trim().is_empty()),
+            sign_line1: Some(c.sign_line1.clone()).filter(|t| !t.trim().is_empty()),
+            sign_line2: Some(c.sign_line2.clone()).filter(|t| !t.trim().is_empty()),
             on_foot: Some(c.on_foot),
             profile: Some(self.config.profile.clone()).filter(|p| !p.is_empty()),
             lan: Some(lan),

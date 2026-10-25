@@ -6,6 +6,7 @@ impl Player {
     /// Type on into the IBIS; when the typing could not be done, the IBIS variables are
     /// written directly.
     pub(crate) fn tick_ibis(&mut self, dt: f32) {
+        self.apply_sign_text();
         let Some((mut typist, line, terminus, stops)) = self.ibis_typist.take() else {
             return;
         };
@@ -34,6 +35,19 @@ impl Player {
                 );
             }
         }
+    }
+
+    /// The launcher's display text goes on once no auto-start or IBIS typing is under way.
+    fn apply_sign_text(&mut self) {
+        if self.sign_text.is_none() || self.startup.is_some() || self.ibis_duty.is_some() || self.ibis_typist.is_some() {
+            return;
+        }
+        let Some(form) = self.sign_text.take() else { return };
+        if !form.route.trim().is_empty() {
+            crate::game_lists::set_route_on(self, form.route.trim());
+        }
+        let said = crate::game_panels::dest_form::apply(self, &form, false);
+        log::info!("display text from the launcher: route {:?}, lines {:?}: {said}", form.route, form.lines);
     }
 
     /// A page moved the duty to stop `stop` of `trip` (`omsi.setNextStop`): the IBIS follows,

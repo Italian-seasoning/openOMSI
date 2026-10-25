@@ -25,6 +25,19 @@ export function CabinTemperatureOption() {
   </div>`;
 }
 
+/** The destination display typed by hand: the route number the matrix shows and two lines
+ *  of destination text (all empty: the displays follow the duty). */
+export function SignTextOption() {
+  const c = useStore().choice;
+  return html`<div class="stack" style="gap:6px">
+    <div class="section-title">${t('Destination display')}</div>
+    <${Input} value=${c.sign_route} onInput=${(sign_route) => choose({ sign_route })} placeholder="Route number, any digits or letters" maxlength="12" />
+    <${Input} value=${c.sign_line1} onInput=${(sign_line1) => choose({ sign_line1 })} placeholder="Destination, first line" maxlength="60" />
+    <${Input} value=${c.sign_line2} onInput=${(sign_line2) => choose({ sign_line2 })} placeholder="Destination, second line (may stay empty)" maxlength="60" />
+    <div class="muted small">${t('Typed text goes on the displays when the drive starts; leave it empty to follow the duty. It can be changed in the game from the quick menu.')}</div>
+  </div>`;
+}
+
 function Weather() {
   const s = useStore();
   const c = s.choice;
@@ -125,6 +138,7 @@ export function DayStep() {
     </div>
     ${!joined && html`<${Weather} />`}
     <${CabinTemperatureOption} />
+    <${SignTextOption} />
     ${picking && html`<${DatePicker} value=${c.date} onClose=${() => setPicking(false)} onPick=${(date) => (setPicking(false), choose({ date, season: 'auto', own_date: null }))} />`}
   </div>`;
 }

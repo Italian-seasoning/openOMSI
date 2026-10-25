@@ -11,7 +11,7 @@
 
 use omsi_plugin::ui::{Align, Element, Kind, Panel, Rgba, RowAlign, UiState, Weight};
 
-mod dest_form;
+pub(crate) mod dest_form;
 mod move_here;
 pub(crate) use dest_form::open as open_dest_form;
 pub(crate) use move_here::ask as ask_move;

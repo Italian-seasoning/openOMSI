@@ -261,6 +261,9 @@ pub(crate) struct Player {
     /// The IBIS typing looks for its keys on a worker thread (in the window: the trials
     /// would hold a frame up to a second and a half; an offscreen run waits for them).
     pub(crate) ibis_background: bool,
+    /// Display text typed in the launcher, put on the displays once the IBIS has typed the
+    /// duty's trip (it would overwrite them before).
+    pub(crate) sign_text: Option<crate::game_panels::dest_form::DestForm>,
     /// The outside camera's arm (how far out it is swung right now).
     pub(crate) arm: camera_arm::SpringArm,
     /// What `Z`/`X`/`C` last turned on, so a repeat press of the same key turns it back off

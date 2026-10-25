@@ -164,30 +164,36 @@ pub(crate) fn set_route_by_hand(app: &mut App, line: &str) {
         return;
     }
     if let Some(p) = app.player.as_mut() {
-        if numeric_ibis_line(line) {
-            let hof = p.vehicle.host.hof.clone();
-            if let Some(hof) = hof.as_deref() {
-                if let Some(ti) = crate::schedule::shown_destination(&p.vehicle, hof, p.blind_pick.as_ref()) {
-                    p.set_destination_by_hand(hof, line, ti);
-                }
-            }
-        } else {
-            // OMSI's route-number field is also used as arbitrary display text. Do not
-            // force symbols/unknown letters through IBIS_LinieKurs: that would turn "-10"
-            // into line 0 (and matrix scripts would then blank or rewrite the rear sign).
-            for name in ["SetLineTo", "Matrix_Nr", "Linie"] {
-                if let Some(i) = p.vehicle.ty.program.str_var(name) {
-                    p.vehicle.state.str_vars[i as usize] = line.to_string();
-                }
-            }
-        }
-        log::info!(
-            "route number set by hand: {line} (IBIS_LinieKurs {:?}, Matrix_Nr {:?})",
-            p.vehicle.var("IBIS_LinieKurs"),
-            p.vehicle.str_var("Matrix_Nr")
-        );
+        set_route_on(p, line);
         app.service_msg = Some((omsi_ui::i18n::said(format!("{} {line}", omsi_ui::tr("Route")), format!("Route {line}")), 3.0));
     }
+}
+
+/// `set_route_by_hand` for a player of its own (the form of the quick menu, or the text
+/// the launcher typed before the drive).
+pub(crate) fn set_route_on(p: &mut crate::player::Player, line: &str) {
+    if numeric_ibis_line(line) {
+        let hof = p.vehicle.host.hof.clone();
+        if let Some(hof) = hof.as_deref() {
+            if let Some(ti) = crate::schedule::shown_destination(&p.vehicle, hof, p.blind_pick.as_ref()) {
+                p.set_destination_by_hand(hof, line, ti);
+            }
+        }
+    } else {
+        // OMSI's route-number field is also used as arbitrary display text. Do not
+        // force symbols/unknown letters through IBIS_LinieKurs: that would turn "-10"
+        // into line 0 (and matrix scripts would then blank or rewrite the rear sign).
+        for name in ["SetLineTo", "Matrix_Nr", "Linie"] {
+            if let Some(i) = p.vehicle.ty.program.str_var(name) {
+                p.vehicle.state.str_vars[i as usize] = line.to_string();
+            }
+        }
+    }
+    log::info!(
+        "route number set by hand: {line} (IBIS_LinieKurs {:?}, Matrix_Nr {:?})",
+        p.vehicle.var("IBIS_LinieKurs"),
+        p.vehicle.str_var("Matrix_Nr")
+    );
 }
 
 /// The route number the bus shows: its matrix's (`Matrix_Nr`), else the one it was set to

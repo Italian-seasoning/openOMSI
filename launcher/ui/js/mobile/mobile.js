@@ -1,4 +1,4 @@
-import { CabinTemperatureOption } from '../pages/drive-day.js';
+import { CabinTemperatureOption, SignTextOption } from '../pages/drive-day.js';
 // The launcher on a phone: a layout of its own for a landscape phone and a finger, on the
 // same data and commands as the desktop launcher. A rail of icons on the left; Drive is the
 // bus turning on the left half with the Start button over it, and the duty as a list of rows
@@ -154,6 +154,7 @@ function MobileDrive() {
         <${Toggle} checked=${c.schedule} onChange=${(schedule) => choose({ schedule })} label="Timetable buses" />
         <${Toggle} checked=${c.autostart} onChange=${(autostart) => choose({ autostart })} label="Bus ready to go" />
         <${CabinTemperatureOption} />
+        <${SignTextOption} />
         <${Toggle} checked=${c.on_foot} onChange=${(on_foot) => choose({ on_foot })} label="Start on foot" />
       </div>
       ${!joined && s.situations?.length > 0 && html`<div class="m-group">

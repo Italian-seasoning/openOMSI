@@ -8,6 +8,12 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Your own text on the destination display from the launcher**: the Drive page has a
+  "Destination display" box for the route number (any digits or letters, shown on the matrix)
+  and two lines of destination text. They are put on the displays when the drive starts, after
+  the auto-start has typed the duty; empty fields leave the displays to the duty. The same text
+  can still be changed in the game from the quick menu (`--sign-route`, `--sign-line1`,
+  `--sign-line2` on the command line).
 - **A modern engine for HTML screens (opt-in)**: a page that puts
   `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
   `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,

@@ -2909,6 +2909,15 @@ pub struct Duty {
     pub schedule: Option<bool>,
     pub autostart: Option<bool>,
     pub comfortable_cabin_on_start: Option<bool>,
+    /// Text for the destination display typed by hand: the route number (the matrix
+    /// displays take any digits and letters) and the two destination lines. All empty:
+    /// the displays follow the duty's own trip.
+    #[serde(default)]
+    pub sign_route: Option<String>,
+    #[serde(default)]
+    pub sign_line1: Option<String>,
+    #[serde(default)]
+    pub sign_line2: Option<String>,
     /// Start as a pedestrian beside the bus (which is then left out): a bus is placed or
     /// taken over from the game menu later.
     #[serde(default)]
@@ -3197,6 +3206,11 @@ fn duty_args_for_root(d: &Duty, root: &Path) -> Result<Vec<String>> {
     }
     if d.comfortable_cabin_on_start.unwrap_or(false) {
         a.push("--comfortable-cabin-on-start".into());
+    }
+    for (flag, text) in [("--sign-route", &d.sign_route), ("--sign-line1", &d.sign_line1), ("--sign-line2", &d.sign_line2)] {
+        if let Some(text) = text.as_deref().map(str::trim).filter(|x| !x.is_empty()) {
+            a.extend([flag.into(), text.to_string()]);
+        }
     }
     if d.on_foot.unwrap_or(false) {
         a.push("--on-foot".into());
