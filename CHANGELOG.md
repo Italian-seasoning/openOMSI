@@ -8,15 +8,13 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
-- **HTML screens as sites**: the page engine now understands modern CSS - flexbox, `position` with
-  `z-index`, borders, `box-sizing`, `calc()` and custom properties, attribute selectors,
-  combinators and `:nth-child`, gradients, shadows, `overflow`, `opacity`, `min-`/`max-` sizes,
-  `text-transform`, `letter-spacing`, `text-overflow` - and runs the page's scripts in Boa, a full
-  JavaScript engine: classes, template strings, destructuring, `Promise`, `async`/`await`, `Map`,
-  `JSON`, `RegExp`, `Date`, ES modules (`<script type="module">`, `import`), `fetch` of the page's
-  own files, and a far more complete DOM (events that bubble, `dataset`, `cloneNode`,
-  `getBoundingClientRect`, `getComputedStyle` ...). Old pages work as before. See
-  [docs/HTMLTEXTURE.md](docs/HTMLTEXTURE.md).
+- **A modern engine for HTML screens (opt-in)**: a page that puts
+  `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
+  `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,
+  combinators, gradients, shadows, and a full JavaScript engine (Boa): classes, `Promise`,
+  `async`/`await`, ES modules, `fetch` of the page's own files and a fuller DOM. Pages without
+  the line keep the classic engine and are not touched; `OMSI_HTML_ENGINE=modern` runs every page
+  on the modern one for comparing. See [docs/HTMLTEXTURE_MODERN.md](docs/HTMLTEXTURE_MODERN.md).
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
   - **Pantographs meet the wire**: a raised pantograph rises until its head touches the contact

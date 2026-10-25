@@ -1,19 +1,31 @@
-//! [`EngineRenderer`]: a page on a thread of its own behind the [`HtmlRenderer`] trait.
-//!
-//! The scripts run in Boa, whose context is not `Send`, so the page (`PageCore`) lives on a
-//! worker thread and every call of the trait is a round trip to it: the caller sends what to do
-//! and waits for the answer. The caller sees what it saw when the page ran on its own thread.
+//! [`EngineRenderer`]: glues DOM, style, layout, paint and script together behind the
+//! [`HtmlRenderer`] trait.
 
 use super::*;
-use crate::page::PageCore;
-use std::sync::mpsc;
-
-type Job = Box<dyn FnOnce(&mut PageCore) + Send>;
 
 /// The engine as an [`HtmlRenderer`].
 pub struct EngineRenderer {
-    tx: Option<mpsc::Sender<Job>>,
-    worker: Option<std::thread::JoinHandle<()>>,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) js: Interp,
+    pub(crate) dirty: bool,
+    pub(crate) warned: bool,
+    pub(crate) start: std::time::Instant,
+    /// A press is on the page and its release has not come yet (a click needs both).
+    pub(crate) pressed: bool,
+    /// The pictures of the page (`<img>`, `background-image`), loaded when first drawn.
+    pub(crate) imgs: Arc<ImageStore>,
+    /// The laid-out page of the last `dom.generation`, shared by `render` and `hit_node`.
+    pub(crate) cache: Mutex<Option<LayoutCache>>,
+    /// `dom.generation` of the last frame handed out.
+    pub(crate) rendered_gen: u64,
+}
+
+/// The laid-out body and the root style it was built with.
+pub(crate) struct LayoutCache {
+    pub(crate) generation: u64,
+    pub(crate) root: Style,
+    pub(crate) b: LBox,
 }
 
 impl EngineRenderer {
@@ -23,207 +35,340 @@ impl EngineRenderer {
 
     /// A page whose `window.omsi` is the one of `api` (see [`omsi_sim::htmltex::PageApi`]).
     pub fn with_api(width: u32, height: u32, html: &str, api: omsi_sim::htmltex::PageApi) -> EngineRenderer {
-        let (tx, rx) = mpsc::channel::<Job>();
-        let (ready_tx, ready_rx) = mpsc::channel::<()>();
-        let html = html.to_string();
-        let worker = std::thread::Builder::new()
-            .name("html page".into())
-            // (a script's recursion and the layout of a deep page need room)
-            .stack_size(32 << 20)
-            .spawn(move || {
-                let mut core = PageCore::new(width, height, &html, api);
-                let _ = ready_tx.send(());
-                while let Ok(job) = rx.recv() {
-                    // a script that brings Boa down takes the page with it, not the game
-                    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(&mut core)));
-                    if r.is_err() {
-                        log::warn!("htmltexture: the page stopped after an internal error");
-                        break;
-                    }
+        let dom = Dom::parse(html);
+        let scripts = dom.scripts.clone();
+        log::debug!(
+            "htmltexture: page parsed: {} nodes, {} css rules, {} script(s), {}x{}",
+            dom.nodes.len(),
+            dom.rules.len(),
+            scripts.len(),
+            width,
+            height
+        );
+        let mut js = Interp::with_api(dom, api);
+        let mut warned = false;
+        for (n, s) in scripts.iter().enumerate() {
+            match js.run(s) {
+                Ok(()) => log::debug!("htmltexture: script {n} ran ({} steps)", js.steps),
+                Err(e) => {
+                    log::warn!("htmltexture: script {n} error: {e}");
+                    warned = true;
                 }
-            })
-            .ok();
-        let up = worker.is_some() && ready_rx.recv().is_ok();
-        EngineRenderer { tx: up.then_some(tx), worker }
+            }
+        }
+        EngineRenderer {
+            width: width.max(1),
+            height: height.max(1),
+            js,
+            dirty: true,
+            warned,
+            start: std::time::Instant::now(),
+            pressed: false,
+            imgs: Arc::new(ImageStore::new(Vec::new())),
+            cache: Mutex::new(None),
+            rendered_gen: 0,
+        }
     }
 
-    /// Run `f` on the page's thread and wait for its answer; `None` when the page has stopped.
-    /// The page's scripts have run by then.
-    fn call<R: Send + 'static>(&self, f: impl FnOnce(&mut PageCore) -> R + Send + 'static) -> Option<R> {
-        self.call_raw(move |c| {
-            c.start();
-            f(c)
-        })
+    /// The cached layout when it is still current, else a fresh one.
+    fn layout_cache(&self, lay: &Layouter) -> LayoutCache {
+        if let Some(c) = self.cache.lock().unwrap().take() {
+            if c.generation == self.js.dom.generation {
+                return c;
+            }
+        }
+        let root = self.root_style(lay);
+        let b = lay.build(self.js.dom.body, &root, 0.0, 0.0, self.width as f32, self.height as f32);
+        LayoutCache { generation: self.js.dom.generation, root, b }
     }
 
-    /// As `call`, before the scripts have run (telling the page its folders).
-    fn call_raw<R: Send + 'static>(&self, f: impl FnOnce(&mut PageCore) -> R + Send + 'static) -> Option<R> {
-        let tx = self.tx.as_ref()?;
-        let (rtx, rrx) = mpsc::channel();
-        tx.send(Box::new(move |core| {
-            let _ = rtx.send(f(core));
-        }))
-        .ok()?;
-        rrx.recv().ok()
+    pub(crate) fn clock(&mut self) {
+        self.js.now = self.start.elapsed().as_secs_f64();
     }
 
-    /// The page's time is set directly (the tests move the clock).
-    #[cfg(test)]
-    pub(crate) fn set_now(&self, t: f64) {
-        self.call(move |c| c.st.borrow_mut().now = t);
+    /// Run the timers that are due. True when one ran (the page probably changed).
+    pub(crate) fn run_timers(&mut self) -> bool {
+        let now = self.js.now;
+        let due: Vec<(u32, Val)> = self.js.timers.iter().filter(|t| t.due <= now).map(|t| (t.id, t.f.clone())).collect();
+        if due.is_empty() {
+            return false;
+        }
+        // an interval is set up again before it runs, so it can stop itself
+        self.js.timers.retain_mut(|t| {
+            if t.due > now {
+                return true;
+            }
+            match t.every {
+                Some(e) => {
+                    t.due = now + e;
+                    true
+                }
+                None => false,
+            }
+        });
+        for (id, f) in due {
+            self.js.steps = 0;
+            if let Err(e) = self.js.call(f, Val::Undef, Vec::new()) {
+                log::warn!("htmltexture: timer {id} failed: {e}");
+            }
+        }
+        true
     }
 
-    #[cfg(test)]
-    pub(crate) fn advance_now(&self, dt: f64) {
-        self.call(move |c| c.st.borrow_mut().now += dt);
+    /// The root (`html`) style is what the body inherits from.
+    pub(crate) fn root_style(&self, lay: &Layouter) -> Style {
+        let dom = &self.js.dom;
+        match dom.nodes[dom.body].parent.filter(|&p| p != 0) {
+            Some(h) => lay.style_of(h, &Style::default()),
+            None => Style::default(),
+        }
     }
 
-    #[cfg(test)]
-    pub(crate) fn render(&self) -> Vec<u8> {
-        self.call(|c| c.render()).unwrap_or_default()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn run_timers(&self) -> bool {
-        self.call(|c| c.run_timers()).unwrap_or(false)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn run_js(&self, src: &str) -> Result<(), String> {
-        let src = src.to_string();
-        self.call(move |c| c.eval(&src)).unwrap_or_else(|| Err("page stopped".into()))
-    }
-
-    #[cfg(test)]
+    /// The element at a point of the texture (pixels); the body when nothing is there.
     pub(crate) fn hit_node(&self, x: f32, y: f32) -> usize {
-        self.call(move |c| c.st.borrow_mut().hit_node(x, y)).unwrap_or(0)
+        let body = self.js.dom.body;
+        with_fonts(|reg, bold| {
+            let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
+            let c = self.layout_cache(&lay);
+            let r = hit(&c.b, x, y);
+            *self.cache.lock().unwrap() = Some(c);
+            r
+        })
+            .flatten()
+            .unwrap_or(body)
     }
 
-    #[cfg(test)]
-    pub(crate) fn by_id(&self, id: &str) -> Option<usize> {
-        let id = id.to_string();
-        self.call(move |c| c.st.borrow().dom.by_id(&id)).flatten()
+    /// Fire `ty` on `node` and let it bubble up through its parents.
+    pub(crate) fn dispatch(&mut self, node: usize, ty: &str, x: f32, y: f32) {
+        let ev = obj_of(&[
+            ("type", Val::Str(ty.to_string())),
+            ("x", Val::Num(x as f64)),
+            ("y", Val::Num(y as f64)),
+            ("clientX", Val::Num(x as f64)),
+            ("clientY", Val::Num(y as f64)),
+            ("target", Val::Elem(node)),
+        ]);
+        self.js.global.lock().unwrap().vars.insert("event".into(), Val::Obj(ev.clone()));
+        let mut cur = Some(node);
+        while let Some(n) = cur {
+            let src = self.js.dom.nodes[n].on.iter().find(|(k, _)| k == ty).map(|(_, s)| s.clone());
+            if let Some(src) = src {
+                if let Err(e) = self.js.run(&src) {
+                    log::warn!("htmltexture: on{ty} handler failed: {e}");
+                }
+            }
+            let listeners = self.js.handlers.get(&(n, ty.to_string())).cloned().unwrap_or_default();
+            for f in listeners {
+                self.js.steps = 0;
+                if let Err(e) = self.js.call(f, Val::Undef, vec![Val::Obj(ev.clone())]) {
+                    log::warn!("htmltexture: {ty} listener failed: {e}");
+                }
+            }
+            if ev.lock().unwrap().contains_key("cancelBubble") {
+                break;
+            }
+            cur = self.js.dom.nodes[n].parent.filter(|&p| p != 0);
+        }
     }
 
-    #[cfg(test)]
-    pub(crate) fn parent_of(&self, n: usize) -> Option<usize> {
-        self.call(move |c| c.st.borrow().dom.nodes[n].parent).flatten()
+    /// The `window.omsi` object.
+    pub(crate) fn omsi(&self) -> Option<ObjRef> {
+        match self.js.window.lock().unwrap().get("omsi") {
+            Some(Val::Obj(o)) => Some(o.clone()),
+            _ => None,
+        }
+    }
+
+    /// Keep the latest value of every variable the host sends in `omsi.vars.num` and
+    /// `omsi.vars.str`, under its lower-case name (and as sent, when that differs), so a page
+    /// can read any of them at any time (`omsi.vars.num.engine_n`, `omsi.getVar("Door_1")`).
+    pub(crate) fn store_vars(&mut self, num: &[(String, f32)], strs: &[(String, String)]) {
+        let Some(omsi) = self.omsi() else { return };
+        let vars = match omsi.lock().unwrap().get("vars") {
+            Some(Val::Obj(o)) => o.clone(),
+            _ => return,
+        };
+        let sub = |kind: &str| match vars.lock().unwrap().get(kind) {
+            Some(Val::Obj(o)) => Some(o.clone()),
+            _ => None,
+        };
+        if let Some(n) = sub("num") {
+            let mut g = n.lock().unwrap();
+            for (k, v) in num {
+                let val = Val::Num(*v as f64);
+                let lower = k.to_ascii_lowercase();
+                if lower != *k {
+                    g.insert(k.clone(), val.clone());
+                }
+                g.insert(lower, val);
+            }
+        }
+        if let Some(s) = sub("str") {
+            let mut g = s.lock().unwrap();
+            for (k, v) in strs {
+                let val = Val::Str(v.clone());
+                let lower = k.to_ascii_lowercase();
+                if lower != *k {
+                    g.insert(k.clone(), val.clone());
+                }
+                g.insert(lower, val);
+            }
+        }
+    }
+
+    pub(crate) fn call_update(&mut self, num: &[(String, f32)], strs: &[(String, String)]) {
+        let omsi = self.js.window.lock().unwrap().get("omsi").cloned();
+        let Some(Val::Obj(omsi)) = omsi else {
+            log::debug!("htmltexture: the page has no window.omsi");
+            return;
+        };
+        let update = omsi.lock().unwrap().get("update").cloned();
+        let Some(update @ Val::Func(_)) = update else {
+            log::debug!("htmltexture: the page has no window.omsi.update function");
+            return;
+        };
+        log::debug!("htmltexture: window.omsi.update with {} numeric and {} string variable(s)", num.len(), strs.len());
+        let (veh, vars) = {
+            let g = omsi.lock().unwrap();
+            (g.get("vehicle").cloned().unwrap_or(Val::Undef), g.get("vars").cloned().unwrap_or(Val::Undef))
+        };
+        let nums: HashMap<String, Val> = num.iter().map(|(k, v)| (k.clone(), Val::Num(*v as f64))).collect();
+        let strv: HashMap<String, Val> = strs.iter().map(|(k, v)| (k.clone(), Val::Str(v.clone()))).collect();
+        let mut fields = vec![("num", Val::Obj(Arc::new(Mutex::new(nums)))), ("str", Val::Obj(Arc::new(Mutex::new(strv)))), ("vars", vars)];
+        // (a scenery object's page has no vehicle)
+        if !matches!(veh, Val::Undef) {
+            fields.push(("vehicle", veh));
+        }
+        let arg = obj_of(&fields);
+        self.js.steps = 0;
+        let result = self.js.call(update, Val::Obj(omsi), vec![Val::Obj(arg)]);
+        log::debug!("htmltexture: window.omsi.update took {} steps", self.js.steps);
+        if let Err(e) = result {
+            if !self.warned {
+                log::warn!("htmltexture: omsi.update failed: {e}");
+                self.warned = true;
+            }
+        }
+    }
+
+    pub(crate) fn render(&self) -> Vec<u8> {
+        let started = std::time::Instant::now();
+        let mut cv = Canvas { w: self.width, h: self.height, px: vec![0; (self.width * self.height * 4) as usize] };
+        with_fonts(|reg, bold| {
+            let lay = Layouter { dom: &self.js.dom, reg, bold, vw: self.width as f32, vh: self.height as f32, imgs: &*self.imgs };
+            let mut c = self.layout_cache(&lay);
+            // the background of html and body covers the whole texture
+            let full = [0.0, 0.0, self.width as f32, self.height as f32];
+            if c.root.bg[3] > 0 {
+                cv.fill(full, c.root.bg, 0.0);
+            }
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &c.root);
+            if c.b.st.bg[3] > 0 {
+                cv.fill(full, c.b.st.bg, 0.0);
+            }
+            paint_bg(&mut cv, &self.imgs, full, 0.0, &c.b.st);
+            let (bg, bg_img) = (c.b.st.bg, c.b.st.bg_img.take());
+            c.b.st.bg = [0, 0, 0, 0];
+            paint(&mut cv, &lay, &c.b);
+            c.b.st.bg = bg;
+            c.b.st.bg_img = bg_img;
+            *self.cache.lock().unwrap() = Some(c);
+        });
+        log::debug!("htmltexture: rendered {}x{} in {:?}", self.width, self.height, started.elapsed());
+        cv.px
     }
 
     #[cfg(test)]
     pub(crate) fn text_of(&self, id: &str) -> Option<String> {
-        let id = id.to_string();
-        self.call(move |c| {
-            let st = c.st.borrow();
-            st.dom.by_id(&id).map(|i| st.dom.text_of(i))
-        })
-        .flatten()
-    }
-}
-
-impl Drop for EngineRenderer {
-    fn drop(&mut self) {
-        self.tx = None;
-        if let Some(w) = self.worker.take() {
-            let _ = w.join();
-        }
+        self.js.dom.by_id(id).map(|i| self.js.dom.text_of(i))
     }
 }
 
 impl HtmlRenderer for EngineRenderer {
     fn set_vars(&mut self, num: &[(String, f32)], strs: &[(String, String)]) {
-        let (num, strs) = (num.to_vec(), strs.to_vec());
-        self.call(move |c| {
-            c.clock();
-            c.set_vars(&num, &strs);
-        });
+        self.clock();
+        self.store_vars(num, strs);
+        self.call_update(num, strs);
     }
 
     fn set_vehicle(&mut self, api: &omsi_sim::vehicle_api::ApiValue) {
-        let api = api.clone();
-        self.call(move |c| c.omsi_set("vehicle", &api));
+        if let Some(omsi) = self.omsi() {
+            omsi.lock().unwrap().insert("vehicle".to_string(), api_to_val(api));
+        }
     }
 
     fn set_env(&mut self, env: &omsi_sim::vehicle_api::ApiValue) {
-        let env = env.clone();
-        self.call(move |c| {
-            if matches!(env, omsi_sim::vehicle_api::ApiValue::Map(_)) {
-                c.omsi_merge(&env);
+        if let (Some(omsi), omsi_sim::vehicle_api::ApiValue::Map(m)) = (self.omsi(), env) {
+            let mut o = omsi.lock().unwrap();
+            for (k, v) in m {
+                o.insert(k.clone(), api_to_val(v));
             }
-        });
+        }
     }
 
     fn pointer(&mut self, x: f32, y: f32, kind: PointerKind) {
-        self.call(move |c| {
-            c.clock();
-            let node = c.st.borrow_mut().hit_node(x, y);
-            match kind {
-                PointerKind::Down => {
-                    c.pressed = true;
-                    c.dispatch(node, "pointerdown", x, y);
-                    c.dispatch(node, "mousedown", x, y);
-                }
-                PointerKind::Up => {
-                    c.dispatch(node, "pointerup", x, y);
-                    c.dispatch(node, "mouseup", x, y);
-                    if std::mem::take(&mut c.pressed) {
-                        c.dispatch(node, "click", x, y);
-                    }
-                }
-                PointerKind::Move => c.dispatch(node, "mousemove", x, y),
+        self.clock();
+        let node = self.hit_node(x, y);
+        match kind {
+            PointerKind::Down => {
+                self.pressed = true;
+                self.dispatch(node, "pointerdown", x, y);
+                self.dispatch(node, "mousedown", x, y);
             }
-        });
+            PointerKind::Up => {
+                self.dispatch(node, "pointerup", x, y);
+                self.dispatch(node, "mouseup", x, y);
+                if std::mem::take(&mut self.pressed) {
+                    self.dispatch(node, "click", x, y);
+                }
+            }
+            PointerKind::Move => self.dispatch(node, "mousemove", x, y),
+        }
     }
 
     fn poll_frame(&mut self) -> Option<Vec<u8>> {
-        self.call(|c| {
-            c.clock();
-            c.run_timers();
-            let generation = c.st.borrow().dom.generation;
-            if !c.dirty && generation == c.rendered_gen {
-                return None;
-            }
-            c.dirty = false;
-            let frame = c.render();
-            c.rendered_gen = c.st.borrow().dom.generation;
-            Some(frame)
-        })
-        .flatten()
+        self.clock();
+        self.run_timers();
+        if !self.dirty && self.js.dom.generation == self.rendered_gen {
+            return None;
+        }
+        self.dirty = false;
+        let frame = self.render();
+        self.rendered_gen = self.js.dom.generation;
+        Some(frame)
     }
 
     fn take_events(&mut self) -> Vec<(String, f32)> {
-        self.call(|c| std::mem::take(&mut c.st.borrow_mut().events)).unwrap_or_default()
+        std::mem::take(&mut self.js.events)
     }
 
     fn take_triggers(&mut self) -> Vec<String> {
-        self.call(|c| std::mem::take(&mut c.st.borrow_mut().triggers)).unwrap_or_default()
+        std::mem::take(&mut self.js.triggers)
     }
 
     fn set_asset_dirs(&mut self, dirs: Vec<std::path::PathBuf>) {
-        self.call_raw(move |c| {
-            let mut st = c.st.borrow_mut();
-            st.imgs = Arc::new(ImageStore::new(dirs.clone()));
-            st.dirs = dirs;
-            st.cache = None;
-            c.dirty = true;
-        });
+        self.imgs = Arc::new(ImageStore::new(dirs));
+        *self.cache.lock().unwrap() = None;
+        self.dirty = true;
     }
 
     fn set_depot(&mut self, depot: &omsi_sim::vehicle_api::ApiValue) {
-        let depot = depot.clone();
-        self.call(move |c| c.omsi_set("depot", &depot));
+        if let Some(omsi) = self.omsi() {
+            omsi.lock().unwrap().insert("depot".to_string(), api_to_val(depot));
+        }
     }
 
     fn take_requests(&mut self) -> Vec<omsi_sim::htmltex::HtmlRequest> {
-        self.call(|c| std::mem::take(&mut c.st.borrow_mut().requests)).unwrap_or_default()
+        std::mem::take(&mut self.js.requests)
     }
 
     fn set_departures(&mut self, departures: &omsi_sim::vehicle_api::ApiValue) {
-        let departures = departures.clone();
-        self.call(move |c| c.omsi_set("departures", &departures));
+        if let Some(omsi) = self.omsi() {
+            omsi.lock().unwrap().insert("departures".to_string(), api_to_val(departures));
+        }
     }
 
     fn take_departure_wants(&mut self) -> Vec<String> {
-        self.call(|c| std::mem::take(&mut c.st.borrow_mut().departure_wants)).unwrap_or_default()
+        std::mem::take(&mut self.js.departure_wants)
     }
 }

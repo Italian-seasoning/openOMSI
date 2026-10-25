@@ -252,10 +252,14 @@ pub fn load_page(dirs: &[&Path], rel: &str) -> String {
             }
             rest = &rest[end..];
         } else if let Some((src, js)) = attr(tag, "src").and_then(|s| read(&s).map(|t| (s, t))) {
-            // (a module keeps its kind, and every external script the file it came from: the
-            // imports of a module are relative to it)
+            // (a module keeps its kind and the file it came from: the imports of a module are
+            // relative to it. A plain script is inlined exactly as it always was)
             let module = attr(tag, "type").is_some_and(|t| t.eq_ignore_ascii_case("module"));
-            out.push_str(&format!("<script{} data-omsi-src=\"{}\">{js}</script>", if module { " type=\"module\"" } else { "" }, src.split(['?', '#']).next().unwrap_or(&src).replace('"', "")));
+            if module {
+                out.push_str(&format!("<script type=\"module\" data-omsi-src=\"{}\">{js}</script>", src.split(['?', '#']).next().unwrap_or(&src).replace('"', "")));
+            } else {
+                out.push_str(&format!("<script>{js}</script>"));
+            }
             let after = &rest[end..];
             let close = after.to_ascii_lowercase().find("</script>").map(|c| c + "</script>".len()).unwrap_or(0);
             rest = &after[close..];

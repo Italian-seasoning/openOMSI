@@ -364,93 +364,74 @@ bus is in front of the page.
 
 ## What the HTML engine supports
 
-A page can be a small site: `.html`, `.css`, `.js` files (and ES modules) in its folder, linked
-as on the web. The engine is not a browser, so a page that looks fine in Chrome may still need
-a few changes; when something doesn't show up, check this list first. Text is drawn in Inter.
+The engine is deliberately small. It is not a browser, so a page that looks fine in Chrome may
+need a few changes. When something doesn't show up, check this list first.
 
 ### HTML
 
-* Nested elements, `<style>`, `<script>`, `<link rel="stylesheet" href>`, `<script src>`,
-  inline `style=""`, all attributes (`data-*` too), entities such as `&amp;`.
-* Block elements (`div`, `p`, `h1`-`h3`, `section`, `ul` ...) with browser-like default sizes and
-  margins; inline elements `span`, `b`, `strong`, `i`, `em`, `a`, `small`, `u`, `s`, `label`,
-  `code` ..., and `<br>`.
-* `<button>` comes with a default look. `<tr>` is a row and `<td>`/`<th>` equal cells of it.
-* `<img src width height>` (bmp, dds, tga, jpg, png), looked up next to the page.
-* `<head>`, `<title>`, `<meta>`, `<template>` are read and not drawn. A `<script>` whose `type` is
-  not JavaScript or `module` (a JSON block, a template) is not run.
+* Nested elements, `<style>`, `<script>`, inline `style=""`, `id`, `class`, entities such as
+  `&amp;`.
+* Block elements: `div`, `p`, `h1`, `h2`, `h3` (with browser-like default sizes and margins).
+* Inline elements: `span`, `b`, `strong`, `i`, `em`, `a`, `small`, `u`, `label`, `code`, and
+  `<br>`.
+* `<button>` comes with a default look (grey, rounded, padded). Boxes with
+  `display:inline-block` are laid out in rows that wrap, which is what you want for keypads
+  and lists. A box without a `width` is as wide as its content.
+* `<img src width height>` (bmp, dds, tga, jpg, png). The file is looked up next to the page (see
+  `htmlengine/images.rs`). `img.src` can be changed from a script. Pictures are cached,
+  a missing file is cached too.
+* `<head>`, `<title>`, `<meta>`, `<link>` are read and then ignored.
 
-Not available: canvas, lists markers (bullets), form controls beyond a look of your own, iframes,
-video, svg.
+Not available: canvas, tables, lists (`ul`/`li`), forms and `input` fields, iframes, video, svg.
 
 ### CSS
 
-* **Selectors**: tag, `#id`, `.class`, `*`, compounds (`div.a#b`), attribute selectors
-  (`[a]`, `[a=b]`, `^=`, `$=`, `*=`, `~=`, `|=`), the combinators space, `>`, `+`, `~`, the
-  pseudo-classes `:first-child`, `:last-child`, `:only-child`, `:nth-child()`,
-  `:nth-last-child()`, `:nth-of-type()`, `:first-of-type`, `:last-of-type`, `:not()`, `:empty`,
-  `:root`, comma lists. `:hover`, `:focus` and `::before`/`::after` never match (a texture has
-  no pointer state and no generated content). Specificity and `!important` work.
-* **Values**: `calc()`, `min()`, `max()`, `clamp()`, custom properties `--name` with `var()`
-  (inherited, with fallbacks), `currentcolor`, colours as names, `#rgb`, `#rrggbb`, `rgb()`,
-  `rgba()`, `hsl()`, `hsla()`. Units `px`, `%`, `em`, `rem`, `ex`, `ch`, `pt`, `pc`, `cm`, `mm`,
-  `in`, `vw`, `vh`, `vmin`, `vmax`.
-* **Box**: `width`, `height`, `min-`/`max-width` and `-height`, `margin` (with `auto`),
-  `padding`, `box-sizing`, `border` (and the per-side forms; solid lines, other styles draw as
-  solid), `border-radius` (one radius; `50%` makes a circle), `overflow` (hidden clips),
-  `opacity`, `box-shadow` (the first, not inset), `visibility`, `display`.
-* **Position**: `position: relative | absolute | fixed` with `top`, `right`, `bottom`, `left`,
-  `inset` and `z-index`. An absolute box sits in its nearest positioned ancestor; fixed is
-  relative to the texture.
-* **Flexbox**: `display: flex | inline-flex`, `flex-direction`, `flex-wrap`, `flex-flow`,
-  `justify-content`, `align-items`, `align-self`, `gap`/`row-gap`/`column-gap`, `flex`,
-  `flex-grow`, `flex-shrink`, `flex-basis`, `order`, auto margins.
-* **Background**: `background-color`, `background-image: url()`, `linear-gradient()` (angles and
-  `to` directions, any number of stops), `background-size`, `-repeat`, `-position`.
-* **Text**: `color`, `font-size`, `font-weight`, `text-align`, `line-height`, `letter-spacing`,
-  `text-transform`, `text-decoration` (underline, line-through), `white-space: nowrap`,
-  `text-overflow: ellipsis` (with `overflow: hidden`), `vertical-align: middle` for inline
-  blocks.
+* Selectors: tag, `#id`, `.class`, `*`, combinations like `div.a#b`, descendant chains (`.panel span`) and comma lists.
+* Properties: `color`, `background` / `background-color`, `background-image: url()`,
+  `background-size`, `background-repeat`, `background-position`, `font-size`, `font-weight`,
+  `text-align`, `line-height`, `margin` (and `-top/-right/-bottom/-left`), `padding` (same),
+  `width`, `height`, `display` (`none`, `inline`, `inline-block`), `visibility`,
+  `border-radius`.
+* Units: `px`, `%`, `em`, `rem`, `pt`, `vw`, `vh`.
+* Layout is plain block flow with wrapped inline text.
 
-Not available: grid (it lays out as a column), floats, animations and transitions, custom
-fonts, `@media`, `@font-face`, `@keyframes`, per-corner radii, outlines.
+Not available: flexbox, grid, floats, `position`, borders, gradients, shadows, `opacity`,
+`overflow`, animations and transitions, custom fonts. Text is drawn in Inter.
+
+Since there is no `overflow`, a box doesn't clip its content. If a text is too long for its
+box, shorten it yourself.
 
 ### JavaScript
 
-The scripts run in Boa, a complete JavaScript engine: modern syntax (classes with private
-fields, arrow functions, template strings, destructuring, spread, optional chaining, `??`,
-generators, `async`/`await`, ES modules), and the standard library (`Promise`, `Map`, `Set`,
-`WeakMap`, `JSON`, `RegExp`, `Date`, `Math`, typed arrays, `Symbol`, `Proxy`, `Reflect`, ...).
-Promises run after the script that made them. Not included: `Intl`.
+The language is ES5 plus arrow functions.
 
-* **Modules**: `<script type="module">` (inline or `src`) and `import ... from './file.js'`,
-  relative to the importing file, from the page's folders only.
-* **DOM**: `document.getElementById`, `querySelector(All)`, `getElementsBy...`, `createElement`,
-  `createTextNode`, `body`, `documentElement`; on elements `appendChild`, `append`, `prepend`,
-  `insertBefore`, `before`, `after`, `replaceWith`, `remove`, `cloneNode`, `children`,
-  `childNodes`, `parentNode`, `firstChild` ..., `nextElementSibling` ..., `textContent`,
-  `innerText`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `id`, `className`, `classList`,
-  `dataset`, `style` (any property, `setProperty`, `cssText`), `getAttribute` ..., `matches`,
-  `closest`, `getBoundingClientRect`, `offsetWidth` ..., `hidden`, `value`, `src`.
-  `getComputedStyle(el)` knows the size, display, colour, opacity and box properties of a laid
-  out element.
-* **Events**: `addEventListener` (with `once`), `removeEventListener`, `on...` properties and
-  `on...=""` attributes, `dispatchEvent`, `Event`, `CustomEvent`. A press on the texture is
-  `pointerdown`, `mousedown`, then on release `pointerup`, `mouseup` and `click`, bubbling up to
-  `document` and `window`; moves are `mousemove`. `DOMContentLoaded` and `load` fire once the
-  scripts have run.
-* **Timers**: `setTimeout`, `setInterval`, `clear...`, `requestAnimationFrame`. They run while
-  the page is being drawn and use real time. At most 64 are active at once.
-* **Files**: `fetch('data.json')` reads a file below the page's folders (text, `json()`);
-  nothing else is reachable and there is no network.
-* **Browser objects** that exist so libraries do not stop: `window`, `navigator`, `location`,
-  `history`, `screen`, `localStorage`/`sessionStorage` (kept while the page lives),
-  `performance.now()`, `matchMedia`, `MutationObserver` and friends (do nothing), `atob`/`btoa`,
-  `structuredClone`, `console`.
+* Language: `var`, `let`, `const`, functions, `if`, `for`, `while`, objects, arrays.
+* Globals: `Math` (`round`, `floor`, `ceil`, `abs`, `min`, `max`, `sqrt`, `pow`, `trunc`,
+  `sin`, `cos`, `PI`), `parseInt`, `parseFloat`, `String`, `Number`, `isNaN`, `NaN`,
+  `Infinity`, `Object.keys`, `console.log/warn/error`.
+* Strings: `split`, `replace`, `trim`, `indexOf`, `charAt`, `slice`, `substring`,
+  `startsWith`, `endsWith`, `includes`, `toUpperCase`, `toLowerCase`, `padStart`, `padEnd`,
+  `repeat`. Numbers: `toFixed`, `toString`.
+* Arrays: `push`, `pop`, `shift`, `slice`, `join`, `indexOf`, `includes`, `map`, `filter`,
+  `forEach`.
+* Timers: `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`. They run while the
+  page is being drawn and use real time, not simulation time.
+* DOM: `document.getElementById`, `document.querySelector`, `document.body`,
+  `createElement`, `appendChild`, `removeChild`, `remove`, `parentNode`, `getAttribute`,
+  `setAttribute`, `classList` (`add`, `remove`, `toggle`, `contains`), `textContent`,
+  `innerText`, `innerHTML` (with markup), `className`, `id`, and `element.style.*`.
 
-Three limits protect the game from runaway pages: one loop may run about five million times,
-function calls nest 400 deep, and a script that goes past either is stopped (an error in the
-log; the page and its other scripts go on, and a `catch` cannot swallow the stop).
+Not available: `Date` (read the time from `omsi.time` instead), `JSON`, `fetch` and any
+network access, `localStorage`, `Promise`/`async`, classes, `new`, regular expressions, and
+the statements `switch`, `do ... while` and `try/catch`. Use `if/else` chains and `while`
+loops instead. `typeof`, `break` and `continue` do work.
+
+At most 64 timers can be active at once. Further `setTimeout`/`setInterval` calls are
+ignored.
+
+Two limits protect the game from runaway pages. A single run of your script may execute about
+400,000 steps, and nesting (function calls, elements) is capped at 48 levels. Normal pages
+never get near either. An endless loop just gets cut off.
 
 ### Redrawing
 
@@ -504,3 +485,9 @@ cargo test -p omsi-sim --release --lib bench_htmlengine -- --ignored --nocapture
 
 `HTMLBENCH_PAGE=path/to/page.html` measures your own page instead of `demo.html`, and
 `HTMLBENCH_RUNS=n` sets the number of timed runs (default 200).
+
+## The modern engine (opt-in)
+
+A second engine with flexbox, positioning, modern CSS and JavaScript (modules, `Promise`,
+`fetch`) is available for pages that ask for it with `<meta name="omsi-engine" content="modern">`.
+Pages that do not are unchanged. See [HTMLTEXTURE_MODERN.md](HTMLTEXTURE_MODERN.md).

@@ -171,19 +171,19 @@ fn timers_fire_when_due_and_can_be_cleared() {
     let html = "<body><p id=o></p><script>var n = 0; var once = 0; var id = setInterval(function () { n++; document.getElementById('o').textContent = 'n' + n;\
         if (n == 3) clearInterval(id); }, 100); setTimeout(function () { once++; omsi.setVar('once', once); }, 250);</script></body>";
     let mut r = EngineRenderer::new(8, 8, html);
-    r.set_now(0.05);
+    r.js.now = 0.05;
     assert!(!r.run_timers());
-    r.set_now(0.11);
+    r.js.now = 0.11;
     assert!(r.run_timers());
     assert_eq!(r.text_of("o").as_deref(), Some("n1"));
-    r.set_now(0.26);
+    r.js.now = 0.26;
     assert!(r.run_timers());
     assert_eq!(r.text_of("o").as_deref(), Some("n2"));
     assert_eq!(r.take_events(), vec![("once".to_string(), 1.0)]);
-    r.set_now(0.40);
+    r.js.now = 0.40;
     r.run_timers();
     assert_eq!(r.text_of("o").as_deref(), Some("n3"));
-    r.set_now(5.0);
+    r.js.now = 5.0;
     assert!(!r.run_timers(), "cleared, and the timeout only ran once");
 }
 
@@ -194,7 +194,7 @@ fn arrays_objects_and_strings() {
         document.getElementById('o').textContent = b.join('') + '|' + Object.keys(o).join('') + '|' + s.length + s[2] + '|' + sum + '|'\
           + a.indexOf(2) + a.includes(9) + '|' + a.slice(1).join('') + '|' + 'x.y'.replace('.', '+') + '|' + a.pop() + a.length;</script></body>";
     let r = EngineRenderer::new(8, 8, html);
-    assert_eq!(r.text_of("o").as_deref(), Some("64|za|3c|5|2false|12|x+y|22"));
+    assert_eq!(r.text_of("o").as_deref(), Some("64|az|3c|5|2false|12|x+y|22"));
 }
 
 #[test]
@@ -382,7 +382,7 @@ fn inside(r: &EngineRenderer, mut n: usize, ancestor: usize) -> bool {
         if n == ancestor {
             return true;
         }
-        match r.parent_of(n) {
+        match r.js.dom.nodes[n].parent {
             Some(p) if p != n => n = p,
             _ => return false,
         }
@@ -393,7 +393,7 @@ fn inside(r: &EngineRenderer, mut n: usize, ancestor: usize) -> bool {
 /// `x` where a press would reach the element (the page's height depends on what the script
 /// has built, so no fixed coordinates).
 fn point_in(r: &EngineRenderer, id: &str, x: f32) -> (f32, f32) {
-    let node = r.by_id(id).unwrap_or_else(|| panic!("no element {id}"));
+    let node = r.js.dom.by_id(id).unwrap_or_else(|| panic!("no element {id}"));
     let mut y = 0.0;
     while y < 900.0 {
         if inside(r, r.hit_node(x, y), node) {
@@ -553,7 +553,7 @@ fn the_demo_redraws_from_the_latest_snapshot_every_second() {
         }
     }
     r.set_vehicle(&v);
-    r.advance_now(1.2);
+    r.js.now += 1.2;
     assert!(r.run_timers());
     assert_eq!(r.text_of("route").as_deref(), Some("Line 9"));
     assert_eq!(r.text_of("kmh").as_deref(), Some("20"));
@@ -900,12 +900,12 @@ fn bench_htmlengine() {
 fn hit_test_follows_layout_changes_and_idle_updates_draw_nothing() {
     let html = "<body style='margin:0'><div id=a style='height:10px'></div><div id=b style='height:10px'></div><script>window.omsi = window.omsi || {}; window.omsi.update = function () {}; function grow() { document.getElementById('a').style.height = '30px'; }</script></body>";
     let mut r = EngineRenderer::new(20, 40, html);
-    let (a, b) = (r.by_id("a").unwrap(), r.by_id("b").unwrap());
+    let (a, b) = (r.js.dom.by_id("a").unwrap(), r.js.dom.by_id("b").unwrap());
     assert_eq!(r.hit_node(5.0, 15.0), b);
     assert!(r.poll_frame().is_some());
     r.set_vars(&[("x".to_string(), 1.0)], &[]);
     assert!(r.poll_frame().is_none(), "an update that changes nothing draws nothing");
-    r.run_js("grow()").unwrap();
+    r.js.run("grow()").unwrap();
     assert_eq!(r.hit_node(5.0, 15.0), a, "the cached layout is dropped when the page changes");
     assert!(r.poll_frame().is_some());
 }

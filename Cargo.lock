@@ -3930,9 +3930,21 @@ name = "omsi-htmlengine"
 version = "0.1.0"
 dependencies = [
  "ab_glyph",
+ "log",
+ "omsi-cfg",
+ "omsi-sim",
+ "omsi-texture",
+]
+
+[[package]]
+name = "omsi-htmlpage"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
  "boa_engine",
  "log",
  "omsi-cfg",
+ "omsi-htmlengine",
  "omsi-sim",
  "omsi-texture",
 ]
@@ -4248,6 +4260,7 @@ dependencies = [
  "omsi-content",
  "omsi-geometry",
  "omsi-htmlengine",
+ "omsi-htmlpage",
  "omsi-map",
  "omsi-model",
  "omsi-o3d",
