@@ -60,10 +60,11 @@ pub(super) fn rail(sh: &mut Shell, v: &PauseView) {
     let categories = Category::available(&ids(v));
     let mut picked = None;
     let selected = sh.pause_category;
+    let hidden = sh.pause_hidden;
     sh.ui.scroll_area("pause-categories", area, &mut |ui, view| {
         for (i, category) in categories.iter().copied().enumerate() {
             let rect = Rect::new(view.x, view.y + i as f32 * 60.0, view.w, 52.0);
-            if category_button(ui, category, selected == category, rect) {
+            if category_button(ui, category, selected == category && !hidden, rect) {
                 picked = Some(category);
             }
         }
