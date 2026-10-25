@@ -159,6 +159,32 @@ mod tests {
     use super::*;
     use omsi_vehicle::hof::{Hof, Terminus};
 
+    /// What the launcher puts on the command line reaches the game's parser whole: spaces
+    /// kept, and a text that starts with a hyphen is no option of its own.
+    #[test]
+    fn the_launchers_display_text_survives_the_games_parser() {
+        use clap::Parser;
+        let duty = |route: &str, l1: &str, l2: &str| omsi_launcher_lib::Duty {
+            map: "maps/x/global.cfg".into(),
+            bus: "Vehicles/x.bus".into(),
+            time: "09:00".into(),
+            sign_route: Some(route.into()),
+            sign_line1: Some(l1.into()),
+            sign_line2: Some(l2.into()),
+            ..Default::default()
+        };
+        let parse = |d: &omsi_launcher_lib::Duty| {
+            let mut argv = vec!["openomsi".to_string()];
+            argv.extend(omsi_launcher_lib::duty_args_for_root(d, std::path::Path::new("test-omsi")).unwrap());
+            crate::cli::Args::try_parse_from(&argv).unwrap_or_else(|e| panic!("{argv:?}: {e}"))
+        };
+        let form = from_args(&parse(&duty("-10", "-> Zjazd do zajezdni", "387 675"))).expect("text given");
+        assert_eq!((form.route.as_str(), form.lines[0].as_str(), form.lines[1].as_str()), ("-10", "-> Zjazd do zajezdni", "387 675"));
+        let route_only = from_args(&parse(&duty("N66X", "", ""))).expect("route only");
+        assert_eq!((route_only.route.as_str(), route_only.lines[0].as_str(), route_only.lines[1].as_str()), ("N66X", "", ""));
+        assert!(from_args(&parse(&duty("", "  ", ""))).is_none(), "empty fields leave the displays to the duty");
+    }
+
     #[test]
     fn a_destination_is_found_by_its_name_alone() {
         let hof = Hof { termini: vec![Terminus { code: 12, texture_id: "Rathaus Spandau".into(), strings: vec!["Rathaus".into()], ..Default::default() }], ..Default::default() };

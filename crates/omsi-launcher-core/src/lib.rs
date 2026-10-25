@@ -3094,8 +3094,10 @@ pub fn duty_args(d: &Duty) -> Result<Vec<String>> {
     duty_args_for_root(d, &root)
 }
 
-// The installation is validated by duty_args; argument tests supply their own path.
-fn duty_args_for_root(d: &Duty, root: &Path) -> Result<Vec<String>> {
+// The installation is validated by duty_args; argument tests (here and the game's, which parse
+// what the launcher passes) supply their own path.
+#[doc(hidden)]
+pub fn duty_args_for_root(d: &Duty, root: &Path) -> Result<Vec<String>> {
     if let Some(t) = d.tutorial {
         return Ok(vec!["--root".into(), root.to_string_lossy().to_string(), "--no-menu".into(), "--tutorial".into(), t.to_string()]);
     }
@@ -3209,7 +3211,9 @@ fn duty_args_for_root(d: &Duty, root: &Path) -> Result<Vec<String>> {
     }
     for (flag, text) in [("--sign-route", &d.sign_route), ("--sign-line1", &d.sign_line1), ("--sign-line2", &d.sign_line2)] {
         if let Some(text) = text.as_deref().map(str::trim).filter(|x| !x.is_empty()) {
-            a.extend([flag.into(), text.to_string()]);
+            // (one argument, `--flag=text`: a text such as "-10" or "-> Depot" would be taken for
+            // another option of the game if it came as an argument of its own)
+            a.push(format!("{flag}={text}"));
         }
     }
     if d.on_foot.unwrap_or(false) {

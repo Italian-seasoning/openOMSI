@@ -525,3 +525,24 @@ fn comfortable_cabin_is_an_independent_opt_in_launch_flag() {
     assert!(enabled.iter().any(|a| a == "--comfortable-cabin-on-start"));
     assert!(!enabled.iter().any(|a| a == "--autostart"));
 }
+
+#[test]
+fn the_display_text_is_passed_as_one_argument_each() {
+    let d = Duty {
+        map: "maps/x/global.cfg".into(),
+        bus: "Vehicles/x.bus".into(),
+        time: "09:00".into(),
+        sign_route: Some(" -10 ".into()),
+        sign_line1: Some("-> Zjazd do zajezdni".into()),
+        sign_line2: Some("387 675".into()),
+        ..Default::default()
+    };
+    let args = duty_args_for_root(&d, Path::new("test-omsi")).unwrap();
+    for want in ["--sign-route=-10", "--sign-line1=-> Zjazd do zajezdni", "--sign-line2=387 675"] {
+        assert!(args.iter().any(|a| a == want), "missing {want}: {args:?}");
+    }
+    assert!(!args.iter().any(|a| a == "--sign-route" || a == "--sign-line1" || a == "--sign-line2"));
+    // empty fields leave the displays to the duty
+    let none = duty_args_for_root(&Duty { sign_route: Some("  ".into()), sign_line1: None, sign_line2: Some(String::new()), ..d }, Path::new("test-omsi")).unwrap();
+    assert!(!none.iter().any(|a| a.starts_with("--sign-")), "{none:?}");
+}

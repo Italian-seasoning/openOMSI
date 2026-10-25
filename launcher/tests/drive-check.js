@@ -36,6 +36,7 @@ const OPTIONS = {
   'Timetable buses': () => text(/^Timetable buses$/),
   'Bus ready to go': () => text(/^Bus ready to go$/),
   'Start on foot': () => text(/^Start on foot$/),
+  'Destination display text': () => one('.page-drive input[placeholder="Route number, any digits or letters"]'),
   Start: () => labelled(/^(Start the duty|Start driving)$/),
   'Continue a save': () => labelled(/^Continue$/),
   'Command line': () => text(/^Show the command line$/),
