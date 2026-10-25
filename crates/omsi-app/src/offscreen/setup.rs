@@ -172,6 +172,9 @@ impl<'a> Offscreen<'a> {
         let physics_log: f32 = omsi_cfg::flags::OMSI_DEBUG_PHYSICS.parse()
             .unwrap_or(0.0);
         let last_reasons: Vec<String> = Vec::new();
+        if let Some(p) = player.as_mut().filter(|_| !args.is_resuming()) {
+            p.sign_text = crate::game_panels::dest_form::from_args(args);
+        }
         if args.autostart && !args.is_resuming() {
             if let Some(p) = player.as_mut() {
                 log::info!("{}", p.start_up());
