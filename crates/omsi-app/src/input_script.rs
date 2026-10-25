@@ -476,6 +476,11 @@ impl App {
                     self.quick_save();
                     return true;
                 }
+                // Alt+F: the flashlight (F alone is the bus's high beam)
+                KeyCode::KeyF if alt && !ctrl && !shift_now && !self.chord_bound(code, shift_now, ctrl, alt) => {
+                    self.toggle_flashlight();
+                    return true;
+                }
                 // OMSI's `view_toggle_informationdisplay` (Ctrl+Y)
                 // OMSI's `view_toggle_informationdisplay` (Shift+Y: 21 / 2)
                 KeyCode::KeyY if shift_now && !ctrl => {

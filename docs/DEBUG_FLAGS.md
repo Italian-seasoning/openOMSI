@@ -175,6 +175,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_DRIVE_PROFILE` | text | - | use | app | Offscreen: "t throttle brake [steer]/..." piecewise constant pedals (crash/kerb tests). |
 | `OMSI_DRIVE_V0` | num | - | use | app | Offscreen: the bus's speed in km/h on the first frame. |
 | `OMSI_FAKE_GPU_ERROR` | text | - | frame | render | Fault injection: open, open-panic, pipeline, lost-build, build, lost, frame, mesh - the GPU error to simulate. Only in builds with omsi-render's `test-hooks` feature (on by default). |
+| `OMSI_FLASHLIGHT` | bool | off | use | app | Offscreen: the player's flashlight is on (in the window it is Alt+F). |
 | `OMSI_FLEET_AHEAD` | num | FLEET_AHEAD | use | app | Minutes ahead the timetable fleet is planned (for tests). |
 | `OMSI_FLEET_IDLE` | num | FLEET_IDLE | use | app | Seconds a fleet vehicle idles (shortened for tests). |
 | `OMSI_FOLLOW_CAM` | text | - | use | app | right,ahead,up,yaw,pitch: a camera in the followed car's frame. |
@@ -289,6 +290,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_NO_BUNDLES` | bool | off | frame | render | Record the main pass directly instead of from render bundles. |
 | `OMSI_NO_CABIN_SHADOWS` | bool | off | frame | render | Enhanced: the lamps of the player's saloon cast no shadows (A/B). |
 | `OMSI_NO_CLOUDS` | bool | off | use | app | No clouds. |
+| `OMSI_NO_CLOUD_SHADOW_FIELD` | bool | off | use | render | Enhanced: the clouds' shadow is one number for the whole picture again, not a field over the land (A/B). |
 | `OMSI_NO_CORONAS` | bool | off | frame | render | No light coronas. |
 | `OMSI_NO_CULL` | bool | off | once | render | Draw every mesh from both sides (A/B). |
 | `OMSI_NO_DRAW_ORDER_DEPTH` | bool | off | once | render, scene | An object's surfaces in one plane, and a spline laid on an earlier one at its height, without the draw order's depth step (A/B). |
@@ -333,7 +335,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_NO_SMOKE` | bool | off | frame | render | No smoke. |
 | `OMSI_NO_SNOWFALL` | bool | off | frame | render | No snowfall. |
 | `OMSI_NO_SPLINE_BATCHING` | bool | off | use | scene | No spline batching. |
-| `OMSI_NO_SPLINE_HOLES` | bool | off | use | scene | Splines without hole rims. |
+| `OMSI_NO_SPLINE_HOLES` | bool | off | use | scene | Keep the unfitted terrain mesh beneath aligned splines. |
 | `OMSI_NO_SPRAY` | bool | off | use | app | No tyre spray. |
 | `OMSI_NO_SURF` | bool | off | once | scene | Every road as smooth as before (no surface texture) (A/B). |
 | `OMSI_NO_TEXCOMPRESS` | bool | off | use | render | No runtime texture compression. |

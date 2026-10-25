@@ -72,6 +72,7 @@ impl Renderer {
             smoke_scratch: Default::default(),
             lamp_slots: Default::default(),
             cabin_slots: Default::default(),
+            cube_slots: Default::default(),
             cabin_places: Vec::new(),
             last_lights: Vec::new(),
             bind_groups: HashMap::new(),

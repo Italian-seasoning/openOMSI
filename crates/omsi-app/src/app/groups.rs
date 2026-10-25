@@ -242,6 +242,9 @@ pub(crate) struct ViewState {
     /// OMSI's pedestrian ("ego") view: the free camera walking at eye height on whatever
     /// people stand on (`view_set_ego`, F11).
     pub(crate) ego: bool,
+    /// The player's flashlight is on (Alt+F, `flashlight` in keyboard.cfg's `[game]`): a lamp
+    /// held at the eye that shines where the view looks, in every view.
+    pub(crate) flashlight: bool,
     /// The camera is in the own bus's cab this frame (see RedrawRequested).
     pub(crate) in_cab: bool,
     /// How far the player has turned the head (driver, passenger) or swung the outside

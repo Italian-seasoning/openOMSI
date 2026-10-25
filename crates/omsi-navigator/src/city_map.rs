@@ -494,11 +494,11 @@ impl Navigator {
             Some(g) => g.key != key || (g.centre - centre).length() > g.radius * 0.35 || g.mpp / mpp > 1.7 || mpp / g.mpp > 1.7,
         };
         if stale && arrived.is_none() {
-            let look = GroundLook { surfaces: mpp < 0.7, trees: mpp < 0.7, dashes: mpp < 3.5, tol: (mpp * 0.5) as f32 };
+            let look = GroundLook { surfaces: mpp < 0.7, trees: mpp < 0.7, dashes: mpp < 3.5, tol: 0.0 };
             let parts = self.ground_parts(net, band.map(|b| b.0));
             let pal2 = *pal;
             let houses = mpp < 6.0;
-            let job = move || super::build::build(&parts, centre, radius, &pal2, look, mpp < 2.2, houses.then_some(omsi_mapdraw::MODEL_TRIANGLES), true);
+            let job = move || super::build::build(&parts, centre, radius, &pal2, look, mpp < 2.2, houses.then_some(omsi_mapdraw::MODEL_TRIANGLES));
             if self.city.ground.is_none() {
                 // (the first picture at once: nothing to show meanwhile)
                 let b = job();

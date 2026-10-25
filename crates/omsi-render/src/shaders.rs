@@ -95,7 +95,7 @@ mod tests {
     /// lamps taking coverage from their active night map, and #3019's larger rain caps, and the tracked panes' snow laid out in the film mesh's own
     /// metres, and the lamps' shadow maps by the tile their record names and the saloon's visibility term
     /// with the ground no longer lit by the tile light map, and the street-scale
-    /// occlusion, the bounced light and the lightning's light), and the textures read with FSR 1's mip bias, `camera.lod`,
+    /// occlusion, the bounced light and the lightning's light, and the sun's share through the clouds' shadow field, and the cube maps of lamps that shine every way, and the wet roads' and the water's traced reflection), and the textures read with FSR 1's mip bias, `camera.lod`,
     /// and a script's screen never taken for a pane (#2927), and the lamp tiles' taps in loops of fixed bounds,
     /// and the colour/mask-only headset entry point, and a self-lit blended layer's alpha giving
     /// Omsi.exe's encoded mix, and the headlight as Omsi.exe's Direct3D spot, lit at the vertices.
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn assembled_shaders_are_the_old_files() {
         let (scene, enhanced) = (super::SCENE.replace("\r\n", "\n"), super::ENHANCED.replace("\r\n", "\n"));
-        assert_eq!((scene.len(), fnv1a(&scene)), (135_763, 0x5304_41aa_7eeb_74a7));
-        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (95_780, 0x382a_264e_1eb3_2019));
+        assert_eq!((scene.len(), fnv1a(&scene)), (135_763, 0x94e0_9979_b442_0578));
+        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (96_882, 0xcc86_ebeb_d485_ea83));
     }
 }
