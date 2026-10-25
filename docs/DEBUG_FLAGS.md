@@ -268,6 +268,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_HEIGHTPROFILE_GROUND` | bool | off | once | scene | The wheels stand on the splines' [heightprofile]s again (A/B). |
 | `OMSI_HTML_FALLBACK_FONT` | text | - | use | htmlengine | Font file for the html pages' characters Inter lacks (Hangul, CJK); else Malgun Gothic (Windows) or AppleGothic (macOS). |
 | `OMSI_HTML_FALLBACK_FONT_BOLD` | text | - | use | htmlengine | With OMSI_HTML_FALLBACK_FONT: its bold face. |
+| `OMSI_IGNORE_TRANSPORT` | bool | off | use | app | Run a vehicle on a map built for other transport modes (the log still says so). |
 | `OMSI_INTEL_FULL_GPU` | bool | off | use | render | Keep the requested settings on an Intel Vulkan adapter. |
 | `OMSI_KEEP_ALLOCATOR` | bool | off | use | app | Skip the restart that swaps in the faster allocator at start. |
 | `OMSI_LAMP_SHADOWS_EVERY_FRAME` | bool | off | frame | render | Redraw the street lamps' shadow tiles every frame (not only when they change). |

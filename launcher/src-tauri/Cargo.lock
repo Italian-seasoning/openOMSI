@@ -3106,6 +3106,7 @@ dependencies = [
  "omsi-scenery",
  "omsi-script",
  "omsi-timetable",
+ "omsi-transit",
  "omsi-trolley",
  "omsi-vehicle",
  "omsi-world",
@@ -3129,6 +3130,15 @@ dependencies = [
 
 [[package]]
 name = "omsi-timetable"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "omsi-cfg",
+ "omsi-transit",
+]
+
+[[package]]
+name = "omsi-transit"
 version = "0.1.0"
 dependencies = [
  "log",

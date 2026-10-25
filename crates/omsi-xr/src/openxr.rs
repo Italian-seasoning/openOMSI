@@ -152,7 +152,7 @@ impl UiAnchor {
 
 impl Vr {
     pub fn new(
-        renderer: &Renderer,
+        renderer: &mut Renderer,
         configured_scale: f32,
         desktop_mirror: bool,
     ) -> Result<Self> {
@@ -339,6 +339,10 @@ impl Vr {
         if let Some(rate) = omsi_cfg::flags::OMSI_OPENXR_MIRROR_RATE.var() {
             log::info!("OpenXR bus mirror rate override: {rate} pictures/s (-1: every mirror each game frame)");
         }
+        // Release the HAL guards before asking wgpu to compile more pipelines.
+        drop(queue);
+        drop(device);
+        renderer.prepare_xr_eye_pipelines();
         Ok(Self {
             sync: SwapchainSync::new(&renderer.device, &renderer.queue, images.len()),
             instance,

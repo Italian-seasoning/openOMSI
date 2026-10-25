@@ -10,6 +10,7 @@ members = [
     "crates/omsi-mapdraw",
     "crates/omsi-navigator",
     "crates/omsi-trolley",
+    "crates/omsi-transit",
     "crates/omsi-vehicle",
     "crates/omsi-timetable",
     "crates/omsi-content",
