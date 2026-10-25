@@ -53,19 +53,13 @@ pub fn wanted(html: &str) -> bool {
     if omsi_cfg::flags::OMSI_HTML_ENGINE.var().is_some_and(|v| v.trim().eq_ignore_ascii_case("modern")) {
         return true;
     }
-    let lower = html.to_ascii_lowercase();
-    let mut rest = lower.as_str();
-    while let Some(at) = rest.find("<meta") {
-        let tag = &rest[at..];
-        let end = tag.find('>').unwrap_or(tag.len());
-        let tag = &tag[..end];
-        let compact: String = tag.chars().filter(|c| !c.is_whitespace() && *c != '\'' && *c != '"').collect();
-        if compact.contains("name=omsi-engine") && compact.contains("content=modern") {
-            return true;
-        }
-        rest = &rest[at + 5..];
-    }
-    false
+    // (the page's own parser: comments, scripts and style sheets are not elements, and an
+    // attribute must be the whole value, not a part of one)
+    let dom = Dom::parse(html);
+    dom.nodes.iter().any(|n| {
+        let attr = |k: &str| n.attrs.iter().find(|(a, _)| a == k).map(|(_, v)| v.trim());
+        n.tag == "meta" && attr("name").is_some_and(|v| v.eq_ignore_ascii_case("omsi-engine")) && attr("content").is_some_and(|v| v.eq_ignore_ascii_case("modern"))
+    })
 }
 
 
@@ -156,5 +150,13 @@ mod tests_select {
         assert!(wanted("<head><meta name=\"omsi-engine\" content=\"modern\"></head>"));
         assert!(wanted("<META content='modern' NAME='omsi-engine' >"));
         assert!(!wanted("<meta name=\"omsi-engine\" content=\"classic\">"));
+        // text that only looks like the element
+        assert!(!wanted("<!-- <meta name=\"omsi-engine\" content=\"modern\"> --><p>old</p>"));
+        assert!(!wanted("<script>var s = '<meta name=\"omsi-engine\" content=\"modern\">';</script>"));
+        assert!(!wanted("<style>/* <meta name=\"omsi-engine\" content=\"modern\"> */</style>"));
+        assert!(!wanted("<meta name=\"omsi-engine-other\" content=\"modern\">"));
+        assert!(!wanted("<meta name=\"omsi-engine\" content=\"modernized\">"));
+        assert!(!wanted("<p data-x='<meta name=\"omsi-engine\" content=\"modern\">'>text</p>"));
+        assert!(wanted("<html><head><title>t</title><!-- note --><meta name=\"omsi-engine\" content=\" Modern \"></head></html>"));
     }
 }
