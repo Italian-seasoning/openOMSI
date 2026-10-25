@@ -204,7 +204,11 @@ mod tests {
     }
 
     #[test]
-    fn plugin_names_follow_the_file() {
-        assert_eq!(plugin_name(std::path::Path::new("Objects/Barrier/gate.lua")), "object:gate");
+    fn plugin_names_follow_the_whole_path() {
+        let a = plugin_name(std::path::Path::new("Objects/A/gate.lua"));
+        let b = plugin_name(std::path::Path::new("Objects/B/gate.lua"));
+        assert!(a.starts_with("object:gate-") && b.starts_with("object:gate-"), "{a} {b}");
+        assert_ne!(a, b, "the same file name in two folders is two scripts");
+        assert_eq!(a, plugin_name(std::path::Path::new("Objects/A/gate.lua")), "the same file is the same script");
     }
 }
