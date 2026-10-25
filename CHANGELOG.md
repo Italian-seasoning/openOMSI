@@ -8,6 +8,24 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Transport modes in the launcher**: maps and vehicles show their mode (tram, railway, metro,
+  trolleybus), the map and vehicle pickers can filter by it, and a vehicle that does not fit the
+  chosen map is marked with the reason and cannot be started (the game refuses it too).
+- **Signalling blocks, points and depot gates for the AI trains**: blocks of `signals.cfg` (given by
+  where they begin and end) hold AI trains one at a time, and the map's signal objects show
+  whether their block is free; the points of `switches.cfg` stay under a train, return to their
+  rest position, can be `manual` or locked by a signal; the first departure of a service comes out
+  of its depot's gate.
+- **The overhead wire and the third rail power the player's rail vehicle**: with a `catenary.cfg` or
+  `thirdrail.cfg` in the map's `transport` folder a tram's pantograph or a metro's shoe needs a live
+  section under it (dead sections and breaks stop the drive, a sagging line weakens it), a vehicle
+  says `[rail_power]` where it gets its current. `network.cfg` sets the class, street, third rail,
+  tunnel and speed of the rail lanes, and `switches.cfg` the speed of a diverging branch.
+- **AI trams, trains and metro trains by services**: the trips made from a map's `routes.cfg` are
+  routed by the game over the whole map's network (the lanes of the mode's kind nearest each
+  station, the shortest way through them, with the direction of the lanes respected) and timed
+  from the stretch lengths, the segment speeds, acceleration and the standing at stops; their
+  departures wait until the track is found, and a trip that cannot be routed is named in the log.
 <<<<<<< HEAD
 - **Realistic rail physics** (with the setting "Realistic road physics", or `OMSI_REALISTIC_ROAD=1`;
   off by default, so no existing tram, train or trolleybus drives differently without it):
