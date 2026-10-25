@@ -8,6 +8,13 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### New
 
+- **Choose where openOMSI keeps its data** (Setup › `.openomsi` folder): settings, profiles,
+  logs and caches can live in another folder, on another disk. A game and its launcher find the
+  folder through a pointer file beside the program (beside the `.app` on a Mac, so an update of
+  the bundle keeps it); a first start, or an installation that cannot be written, uses `~/.openomsi`
+  as before. Moving copies the folder first, in the background (leaving the page does not stop it),
+  and switches only when the copy is whole; a copy that fails leaves the old folder as it was. The
+  default `~/.openomsi` is kept after a move, because other copies of openOMSI may still use it.
 - **A modern engine for HTML screens (opt-in)**: a page that puts
   `<meta name="omsi-engine" content="modern">` in its head runs on a second engine with flexbox,
   `position` with `z-index`, borders, `calc()` and custom properties, attribute selectors,
@@ -470,6 +477,13 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
   hardly at all. Measured against OMSI 2 with the Kajosoft Citaro, headlights on less off:
   the road +6 / +7 / +8 / +7 / +6 from the bumper out (OMSI 2: +5 / +4 / +5 / +7 / +6), the
   kerb +26 / +15 (+21 / +15). AI vehicles' spots light the road no longer, as in OMSI 2.
+- **AI traffic: a bus waiting to move over a lane no longer jams the street for good**: a car standing
+  in the lane a bus (or a car whose lane closes) waits to move over into took that vehicle for its
+  lead, so it stayed put even at a green light while the bus waited for it to move - both stood for
+  minutes, and the queue behind them with them (Spandau, the four-lane approach of the Altstadt
+  junction). The standing car now drives on after a few seconds. And a route's lane change that
+  the bus missed its window for (the two lanes no longer run side by side) is made all the same
+  after 12 s of waiting instead of never. `OMSI_DEBUG_STUCK` also says why a lane change waits.
 - **On foot, the player walks wherever the passengers' paths lead**: a staircase, a ramp, a gate
   through a fence or a doorway the map gives the AI passengers is now walkable by hand too, at
   the path's height (the step and slope limits and the walls no longer stop the walker on a

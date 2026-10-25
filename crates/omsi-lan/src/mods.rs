@@ -642,8 +642,7 @@ fn handle(stream: TcpStream, key: &omsi_net::hostkey::HostKey, ready: &Mutex<Opt
 
 /// The session folder of this game (`~/.openomsi/lan-mods/<pid>`).
 fn sandbox_base() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
-    Some(PathBuf::from(home).join(".openomsi").join("lan-mods"))
+    Some(omsi_cfg::user_data::base_dir()?.join("lan-mods"))
 }
 
 /// The host's mods of this session, mounted as a content root (process-wide like the
