@@ -2380,7 +2380,7 @@ pub fn settings_from_text_on(text: Option<&str>, phone: bool) -> Value {
             "gpu_texture_compression" => v[&k] = json!(!matches!(val.trim().to_ascii_lowercase().as_str(), "0" | "off" | "no" | "false" | "disabled")),
             "max_fps" => v[&k] = json!(val.parse::<f64>().map(|x| x as i64).unwrap_or(0)),
             "max_obj_dist" => v[&k] = if val.eq_ignore_ascii_case("auto") { json!("auto") } else { json!(val.parse::<f64>().map(|m| (m.round() as i64).to_string()).unwrap_or_else(|_| "auto".into())) },
-            "ssao" | "shadows" | "shadow_blobs" | "navigator" | "enhanced" | "triple_screen" | "triple_span" | "triple_hud_center" | "vr" | "vr_desktop_mirror" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_objects" | "collision_pedestrians" | "head_movement" | "driverview_smooth" | "hands_in_cab" | "alt_view" | "precision_zoom" => v[&k] = json!(b(val)),
+            "ssao" | "shadows" | "shadow_blobs" | "lamp_shadows" | "navigator" | "enhanced" | "triple_screen" | "triple_span" | "triple_hud_center" | "vr" | "vr_desktop_mirror" | "fullscreen" | "vsync" | "exact_fare" | "detail_textures" | "texture_compression" | "chat" | "tooltips" | "name_tags" | "show_fps" | "clouds" | "doppler" | "driver" | "use_real_time" | "use_real_date" | "use_real_year" | "collision_vehicles" | "collision_objects" | "collision_pedestrians" | "head_movement" | "driverview_smooth" | "hands_in_cab" | "alt_view" | "precision_zoom" => v[&k] = json!(b(val)),
             "maintenance" | "ai_unsched_factor" | "ai_max_scheduled" | "standing_chance" => v[&k] = json!(val.trim_end_matches('%').parse::<f64>().map(|x| x.max(0.0) as i64).unwrap_or(0)),
             // (-1: no parked cars at all, #864)
             "ai_max_parked" => v[&k] = json!(val.parse::<f64>().map(|x| x.max(-1.0) as i64).unwrap_or(0)),
@@ -2575,8 +2575,8 @@ pub fn save_settings(v: &Value) -> Result<()> {
 
 /// The settings a graphics profile holds: what the Graphics tab shows, except the machine's
 /// own (fullscreen, graphics API).
-pub const GRAPHICS_PROFILE_KEYS: [&str; 40] = [
-    "graphics", "msaa", "render_scale", "upscaler", "fsr_quality", "fsr_sharpness", "anisotropy", "shadow_size", "ssao", "shadows", "shadow_casters", "detail_textures", "night_brightness", "led_glow", "led_mips", "shadow_blobs", "reflections", "clouds", "cloud_quality", "street_light", "rain_quality", "vehicle_smoke", "puddles", "windy_trees", "ray_tracing", "light_shadows", "cloud_shadows", "light_glow",
+pub const GRAPHICS_PROFILE_KEYS: [&str; 41] = [
+    "graphics", "msaa", "render_scale", "upscaler", "fsr_quality", "fsr_sharpness", "anisotropy", "shadow_size", "ssao", "shadows", "shadow_casters", "detail_textures", "night_brightness", "led_glow", "led_mips", "shadow_blobs", "lamp_shadows", "reflections", "clouds", "cloud_quality", "street_light", "rain_quality", "vehicle_smoke", "puddles", "windy_trees", "ray_tracing", "light_shadows", "cloud_shadows", "light_glow",
     "vsync", "max_fps", "view_distance", "max_obj_dist", "min_obj_size", "mirror_size", "mirror_refresh", "mirror_quality", "mirror_hud_every_frame", "video_memory", "texture_compression", "gpu_texture_compression",
 ];
 
@@ -2716,7 +2716,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("precision_zoom", false),
     );
     let text = format!(
-        "{text}pax_voices={}\nnav_arrows={}\nnav_ai={}\nnav_surface={}\nnav_light={}\nnav_3d={}\nnav_widget={}\nnav_size={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nshadow_blobs={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nupdate_notify={}\npresence={}\nreflections={}\nmouse_sens={}\nmouse_pedal_strength={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nred_steer_spd={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nseat_pitch_deg={}\nsteer_look={}\nhead_tracking={}\nhead_tracking_yaw_sens={}\nhead_tracking_pitch_sens={}\nhead_tracking_roll_sens={}\nhead_tracking_x_sens={}\nhead_tracking_y_sens={}\nhead_tracking_z_sens={}\nhead_tracking_invert_yaw={}\nhead_tracking_invert_pitch={}\nhead_tracking_invert_roll={}\nhead_tracking_invert_x={}\nhead_tracking_invert_y={}\nhead_tracking_invert_z={}\nff_enabled={}\nbrake_hold={}\nauto_clutch={}\nmomentary_gears={}\nauto_shift={}\nled_glow={}\nled_mips={}\nnight_brightness={}\nui_scale={}\nui_scale_window={}\nchat_size={}\nnotes={}\nmouse_steering={}\nmouse_right_off={}\nmouse_smooth={}\nmouse_hold={}\nblinker_cancel={}\nff_road_vib={}\nff_engine_vib={}\nff_fade={}\n",
+        "{text}pax_voices={}\nnav_arrows={}\nnav_ai={}\nnav_surface={}\nnav_light={}\nnav_3d={}\nnav_widget={}\nnav_size={}\nget_up={}\ntime_speed={}\nmachine_translation={}\nshadow_casters={}\nshadow_blobs={}\nlamp_shadows={}\nctrl_deadzone={}\nupdate_check={}\nupdate_auto={}\nupdate_notify={}\npresence={}\nreflections={}\nmouse_sens={}\nmouse_pedal_strength={}\ngraphics_api={}\nctrl_off={}\nsteering_linear={}\nold_steering={}\nred_steer_spd={}\nff_invert={}\nwheel_range={}\nwheel_lock={}\nfov={}\ncamera_collision={}\npedal_throttle={}\npedal_brake={}\nseat_x={}\nseat_y={}\nseat_z={}\nseat_pitch_deg={}\nsteer_look={}\nhead_tracking={}\nhead_tracking_yaw_sens={}\nhead_tracking_pitch_sens={}\nhead_tracking_roll_sens={}\nhead_tracking_x_sens={}\nhead_tracking_y_sens={}\nhead_tracking_z_sens={}\nhead_tracking_invert_yaw={}\nhead_tracking_invert_pitch={}\nhead_tracking_invert_roll={}\nhead_tracking_invert_x={}\nhead_tracking_invert_y={}\nhead_tracking_invert_z={}\nff_enabled={}\nbrake_hold={}\nauto_clutch={}\nmomentary_gears={}\nauto_shift={}\nled_glow={}\nled_mips={}\nnight_brightness={}\nui_scale={}\nui_scale_window={}\nchat_size={}\nnotes={}\nmouse_steering={}\nmouse_right_off={}\nmouse_smooth={}\nmouse_hold={}\nblinker_cancel={}\nff_road_vib={}\nff_engine_vib={}\nff_fade={}\n",
         match v.get("pax_voices").and_then(|x| x.as_str()).unwrap_or("all") {
             "tickets" => "tickets",
             "off" => "off",
@@ -2733,6 +2733,7 @@ pub fn settings_to_text(v: &Value, old: Option<&str>) -> String {
         b("machine_translation", false),
         if v.get("shadow_casters").and_then(|x| x.as_str()) == Some("omsi") { "omsi" } else { "all" },
         b("shadow_blobs", true),
+        b("lamp_shadows", true),
         f("ctrl_deadzone", 0.0).clamp(0.0, 0.3),
         b("update_check", true),
         b("update_auto", false),

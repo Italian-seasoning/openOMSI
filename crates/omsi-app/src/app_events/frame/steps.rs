@@ -494,6 +494,7 @@ pub(crate) fn picture_lighting(
         Some(w) => weather_lighting(daylight, w, cloud_drift, wetness, snow_cover, settings.shadows, sky),
         None => lights::lighting_from(daylight, 50000.0),
     };
+    lighting.lamp_shadows &= settings.lamp_shadows;
     lighting.wetness = omsi_cfg::flags::OMSI_WETNESS.parse()
         .unwrap_or(wetness);
     dress_lighting(&mut lighting, world, inside, settings);

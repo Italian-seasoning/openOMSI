@@ -510,3 +510,14 @@ fn quick_actions_pending_setting_is_not_lost_when_other_settings_are_saved() {
     assert_eq!(Settings::from_text(&saved).pause_quick_actions, r#"["world","save"]"#);
     assert_eq!(saved.matches("pause_quick_actions=").count(), 1);
 }
+
+#[test]
+fn lamp_shadows_on_by_default_and_round_trip_through_the_launcher() {
+    assert!(Settings::from_text("").lamp_shadows);
+    let mut ui = omsi_launcher_lib::settings_from_text(None);
+    assert!(Settings::from_text(&omsi_launcher_lib::settings_to_text(&ui, None)).lamp_shadows);
+    ui["lamp_shadows"] = serde_json::json!(false);
+    let game = Settings::from_text(&omsi_launcher_lib::settings_to_text(&ui, None));
+    assert!(!game.lamp_shadows);
+    assert_eq!(Settings::from_text(&game.to_text()), game);
+}

@@ -471,6 +471,6 @@ export const SETTINGS_TABS = [graphics, driving, camera, sound, gameplay, genera
 
 /** The settings a saved graphics profile holds (`GRAPHICS_PROFILE_KEYS`). */
 export const GRAPHICS_PROFILE_KEYS = [
-  'graphics', 'msaa', 'render_scale', 'upscaler', 'fsr_quality', 'fsr_sharpness', 'anisotropy', 'shadow_size', 'ssao', 'shadows', 'shadow_casters', 'detail_textures', 'night_brightness', 'led_glow', 'led_mips', 'shadow_blobs', 'reflections', 'clouds', 'cloud_quality', 'street_light', 'rain_quality', 'vehicle_smoke', 'puddles', 'windy_trees', 'ray_tracing', 'light_shadows', 'cloud_shadows', 'light_glow',
+  'graphics', 'msaa', 'render_scale', 'upscaler', 'fsr_quality', 'fsr_sharpness', 'anisotropy', 'shadow_size', 'ssao', 'shadows', 'shadow_casters', 'detail_textures', 'night_brightness', 'led_glow', 'led_mips', 'shadow_blobs', 'lamp_shadows', 'reflections', 'clouds', 'cloud_quality', 'street_light', 'rain_quality', 'vehicle_smoke', 'puddles', 'windy_trees', 'ray_tracing', 'light_shadows', 'cloud_shadows', 'light_glow',
   'vsync', 'max_fps', 'view_distance', 'max_obj_dist', 'min_obj_size', 'mirror_size', 'mirror_refresh', 'mirror_quality', 'mirror_hud_every_frame', 'video_memory', 'texture_compression', 'gpu_texture_compression',
 ];

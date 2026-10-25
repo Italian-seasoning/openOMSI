@@ -27065,6 +27065,17 @@ _version: 2
   ru: "Сохранить текущую графику как профиль"
   ka: "მიმდინარე გრაფიკის პროფილად შენახვა"
 
+"Street lamps' shadows":
+  fr: "Ombres des lampadaires"
+  de: "Schatten der Straßenlaternen"
+  es: "Sombras de las farolas"
+  it: "Ombre dei lampioni"
+  pt: "Sombras dos postes de luz"
+  pt-pt: "Sombras dos candeeiros"
+  pl: "Cienie latarni"
+  nl: "Schaduwen van straatlantaarns"
+  ca: "Ombres dels fanals"
+
 "OMSI's shadow meshes (under vehicles)":
   ca: "Malles d'ombra d'OMSI (sota els vehicles)"
   pt: "Malhas de sombra do OMSI (sob os veículos)"

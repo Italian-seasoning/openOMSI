@@ -501,6 +501,13 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
   hardly at all. Measured against OMSI 2 with the Kajosoft Citaro, headlights on less off:
   the road +6 / +7 / +8 / +7 / +6 from the bumper out (OMSI 2: +5 / +4 / +5 / +7 / +6), the
   kerb +26 / +15 (+21 / +15). AI vehicles' spots light the road no longer, as in OMSI 2.
+- **AI traffic: a bus waiting to move over a lane no longer jams the street for good**: a car standing
+  in the lane a bus (or a car whose lane closes) waits to move over into took that vehicle for its
+  lead, so it stayed put even at a green light while the bus waited for it to move - both stood for
+  minutes, and the queue behind them with them (Spandau, the four-lane approach of the Altstadt
+  junction). The standing car now drives on after a few seconds. And a route's lane change that
+  the bus missed its window for (the two lanes no longer run side by side) is made all the same
+  after 12 s of waiting instead of never. `OMSI_DEBUG_STUCK` also says why a lane change waits.
 - **The launcher's bus preview is no longer misted over**: the bus is made for it (the
   showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
   vehicle starts at without a weather. The
