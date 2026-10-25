@@ -1130,8 +1130,9 @@ pub fn flashlight(lights: &mut Vec<PointLight>, eye: DVec3, forward: Vec3, right
     // values as a `[spotlight]` declares them: position, direction, colour, range, inner and
     // outer cone (degrees, full angles); a warm white, 50 m, 14 and 42 degrees
     let vals = [0.0, 0.0, 0.0, d.x, d.y, d.z, 255.0, 240.0, 215.0, 50.0, 14.0, 42.0];
-    // (night = 1: the classic picture dims a lamp by day, a torch is as bright by day)
-    push_spot(lights, at, d, Vec3::ZERO, &vals, FLASHLIGHT_SHARE, 1.0);
+    // (the classic picture's spot is Omsi.exe's Direct3D light, as bright by day as by night)
+    push_classic_spot(lights, at, d, &vals, FLASHLIGHT_CLASSIC_SHARE, 0.0, 0.0);
+    push_enhanced_spot(lights, at, d, Vec3::ZERO, &vals, FLASHLIGHT_SHARE);
 }
 
 /// The flashlight held at the camera's eye, shining along its view (`flashlight`).
@@ -1144,6 +1145,10 @@ pub fn flashlight_ahead(scene: &mut Scene, cam: &omsi_render::Camera) {
 
 /// A flashlight's share of a headlamp pair's strength: one small lamp, not two big ones.
 const FLASHLIGHT_SHARE: f32 = 0.45;
+
+/// The same lamp's share in the classic picture, whose spot is attenuated by its range (a
+/// 50 m range keeps half of the light at 10 m).
+const FLASHLIGHT_CLASSIC_SHARE: f32 = 1.0;
 
 /// How far Omsi.exe moves every `[smoke]` and `[particle_emitter]` puff towards the eye in
 /// depth (m): 0x5a1d54 gives each particle 0.1, which 0x5a2b5c takes off the view depth it
