@@ -826,6 +826,11 @@ impl TrafficSim {
         };
         // (an emergency vehicle crosses against it on the movement kept for it)
         let light = self.emergency_light(i, &way, light);
+        // a train also stops before a block another train is in
+        let light = match (light, self.block_stop(i)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         self.cars[i].light_hold = light.is_some();
         let player_at_light = light.zip(lead).is_some_and(|(at, (l, who))| who == Some(usize::MAX) && at - self.cars[i].state.front - l.gap < PLAYER_AT_LIGHT);
         self.cars[i].since_player_at_light = if player_at_light { 0.0 } else { self.cars[i].since_player_at_light + dt };

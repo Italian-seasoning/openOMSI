@@ -255,4 +255,9 @@ pub struct VehicleInstance {
     rail_scripted: bool,
     rail_out: Option<crate::rail::Outcome>,
     rail_log: f32,
+    /// The brake system and the couplings of a rail vehicle whose file describes them.
+    rail_brake_sys: Option<crate::rail::brake::BrakeSystem>,
+    rail_chain: Option<crate::rail::chain::Chain>,
+    /// The train broke in two at a coupling: the brakes are applied.
+    rail_broken: bool,
 }

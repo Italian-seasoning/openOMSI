@@ -269,6 +269,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_HTML_ENGINE` | text | classic | use | htmlpage | `modern` runs every [htmltexture] page on the modern engine (flexbox, modern JavaScript) instead of only those that ask with <meta name="omsi-engine" content="modern">; for comparing the two. |
 | `OMSI_HTML_FALLBACK_FONT` | text | - | use | htmlengine, htmlpage | Font file for the html pages' characters Inter lacks (Hangul, CJK); else Malgun Gothic (Windows) or AppleGothic (macOS). |
 | `OMSI_HTML_FALLBACK_FONT_BOLD` | text | - | use | htmlengine, htmlpage | With OMSI_HTML_FALLBACK_FONT: its bold face. |
+| `OMSI_IGNORE_TRANSPORT` | bool | off | use | app | Run a vehicle on a map built for other transport modes (the log still says so). |
 | `OMSI_INTEL_FULL_GPU` | bool | off | use | render | Keep the requested settings on an Intel Vulkan adapter. |
 | `OMSI_KEEP_ALLOCATOR` | bool | off | use | app | Skip the restart that swaps in the faster allocator at start. |
 | `OMSI_LAMP_SHADOWS_EVERY_FRAME` | bool | off | frame | render | Redraw the street lamps' shadow tiles every frame (not only when they change). |
@@ -298,6 +299,7 @@ effect. On Android, `openOMSI/env.txt` holds `NAME=value` lines that are set bef
 | `OMSI_NO_GLARE` | bool | off | frame | render | No sun glare. |
 | `OMSI_NO_GLASS_PICTURE` | bool | off | frame | render | No picture behind the glass (rain films). |
 | `OMSI_NO_GROUND_PAINT` | bool | off | use | scene | No painted ground layers. |
+| `OMSI_NO_GROUND_PASS` | bool | off | frame | render | The terrain's paint layers lit one by one again, not laid into one albedo picture first (A/B). |
 | `OMSI_NO_GROUND_SPLINE_BATCHING` | bool | off | use | scene | No batching of ground splines. |
 | `OMSI_NO_GUARD` | bool | off | use | guard, launcher-api | No start guard: a start that crashes or hangs is not healed by an update or by going back to the version before. |
 | `OMSI_NO_HARDWARE_ID` | bool | off | once | lan | LAN: the game sends no hardware identifier (a host can then turn the player away, and cannot ban the machine). |

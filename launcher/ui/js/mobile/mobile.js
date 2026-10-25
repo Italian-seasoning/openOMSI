@@ -11,7 +11,7 @@ import { Icon } from '../icons.js';
 import { Spinner, Toggle, Slider } from '../ui.js';
 import { BusPreview } from '../preview.js';
 import { RouteMap } from '../routemap.js';
-import { tourId, choose, curMap, curBus, curLine, curTour, pickedTrip, realTime, realDate, start, weatherName, weatherOfItsOwn, askJoined, noServerBus, mapName, serverBuses, busFile } from '../data.js';
+import { tourId, choose, curMap, curBus, curLine, curTour, pickedTrip, realTime, realDate, start, weatherName, weatherOfItsOwn, askJoined, noServerBus, mapName, serverBuses, busFile, transportRefusal } from '../data.js';
 import { hms, mapPicture, tripAt, depotRun, pickTrip, lineMatches, findTours, chooseLine, chooseTour, setSeason, localNow, SEASONS, PHASES, TripEnds, tripTime, weatherFacts, entryName } from '../pages/drive.js';
 import { MultiplayerPage } from '../pages/multiplayer.js';
 import { ProfilePage } from '../pages/profile.js';
@@ -88,7 +88,7 @@ function MobileDrive() {
   const trips = tour?.trips || [];
   const picked = pickedTrip();
   const trip = c.free ? null : picked != null ? trips.find((x) => x.index === picked) : trips[tripAt(tour || { trips: [] }, c.time * 60)];
-  const ready = m && v && (c.free || (line && tour)) && !noServerBus();
+  const ready = m && v && (c.free || (line && tour)) && !noServerBus() && !transportRefusal(m, v);
   const mapLabel = joined && c.lan_map ? mapName(c.lan_map.replace(/\\/g, '/')) : m ? m.friendly || m.name : '-';
   const go = async (extra) => {
     setBusy(true);

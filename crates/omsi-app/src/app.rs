@@ -320,7 +320,7 @@ impl App {
         #[cfg(windows)]
         if self.settings.vr_requested() {
             let image_scale = renderer.start_xr(self.settings.vr_scale);
-            match crate::openxr::Vr::new(&renderer, image_scale, self.settings.vr_desktop_mirror) {
+            match crate::openxr::Vr::new(&mut renderer, image_scale, self.settings.vr_desktop_mirror) {
                 Ok(vr) => self.xr.vr = Some(vr),
                 Err(e) => log::error!("OpenXR could not start: {e:#}"),
             }
@@ -704,6 +704,7 @@ impl App {
                                 }
                             }
                         }
+                        sch.start_transit(w.clone());
                         self.session.schedule = Some(sch);
                     } else if !crate::rail_drive::args_rail(&self.args) && self.args.lan_join.is_none() {
                         // (the timetable is still the map's to read and pick a duty from: a

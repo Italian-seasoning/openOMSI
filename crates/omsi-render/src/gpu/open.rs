@@ -540,14 +540,17 @@ impl Renderer {
         let rain = coronas::Precip::rain(&device, &scene.camera_layout, &precip.view);
         drop(corona_texture);
         let sky = sky::SkyBase::new(&device, &queue, &scene.camera_layout, !leave_out_enhanced);
-        let passes = passes::PassKit { device: &device, scene: &scene, coronas: &coronas, snow: &snow, rain: &rain, sky: &sky, msaa }
-            .build(format, hdr_format, leave_out_enhanced);
+        let sky_pipelines = sky.pipeline_base();
+        let kit = passes::PassKit { device: &device, scene: &scene, coronas: &coronas, snow: &snow, rain: &rain, sky: &sky_pipelines, msaa };
+        let eye_pipeline_kit = (!leave_out_enhanced && options.ray_tracing).then(|| passes::EyePipelineKit::new(&kit));
+        let passes = kit.build(format, hdr_format, leave_out_enhanced);
         let (sky_sampler, sky_mesh) = sky::dome(&device, &queue);
         let overlays = overlays::Overlays::new(&device, format, msaa);
         let gl = GL_BACKEND.load(std::sync::atomic::Ordering::Relaxed);
         let ssao = ssao::ssao(&device, gl);
         let fog_lamps = ssao::fog_lamps(&device, &scene.camera_layout, hdr_format, gl);
         let prepass = scene::prepass(&device, &scene, msaa, !leave_out_enhanced);
+        let ground_pipelines = (!gl && !leave_out_enhanced && !sixteen_texture_units()).then(|| std::array::from_fn(|i| scene.ground_pipeline_at(&device, i)));
         let mip = mip::build(&device);
         let post = post::build(&device, format, hdr_format, &defaults.white_texture);
         let enhanced = enhanced::build(&device, &queue, hdr_format, &defaults.camera_buf, &sky, !leave_out_enhanced);
@@ -575,6 +578,7 @@ impl Renderer {
                 evicted_at: std::time::Instant::now(),
                 hdr_targets: HashMap::new(),
                 ao: None,
+                ground: None,
                 depth: None,
                 msaa_targets: HashMap::new(),
             },
@@ -714,6 +718,9 @@ impl Renderer {
             ao_buf: ssao.buf,
             prepass_pipelines: prepass.pipelines,
             prepass_msaa_pipelines: prepass.msaa_pipelines,
+            prepass_eye_pipelines: prepass.eye_pipelines,
+            ground_pipelines,
+            ground_bound: std::cell::Cell::new(false),
             ssao_pipeline: ssao.ssao_pipeline,
             blur_pipeline: ssao.blur_pipeline,
             plain_ssao_pipeline: ssao.plain_ssao_pipeline,
@@ -725,6 +732,8 @@ impl Renderer {
             material_layout: scene.material_layout,
             pass: passes.pass,
             hdr_pass: passes.hdr_pass,
+            hdr_eye_pass: passes.hdr_eye_pass,
+            eye_pipeline_kit,
             reflection_pass: passes.reflection_pass,
             overlay_pipeline: overlays.pipeline,
             overlay_layout: overlays.layout,

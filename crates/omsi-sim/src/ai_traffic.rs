@@ -9,6 +9,7 @@
 pub mod body_link;
 pub mod admission;
 pub mod berths;
+pub mod blocks;
 pub mod bus_service;
 pub mod control;
 pub mod deadlock;
@@ -244,6 +245,9 @@ pub struct TrafficSim {
     /// The player's tram or train on the rails, set before each `tick`: it asks the lights on
     /// the track ahead as an AI one does (they stayed red for the player).
     pub player_rail: Option<PlayerRail>,
+    /// The map's signalling blocks (`signals.cfg`) and its configured points.
+    pub blocks: blocks::BlockSys,
+    pub switch_board: blocks::SwitchBoard,
     /// Seconds since the player's bus last showed the indicator towards the traffic (the
     /// lamps go dark half of the time).
     pub player_signal_age: f32,

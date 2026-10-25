@@ -777,6 +777,10 @@ pub struct MapInfo {
     /// a date outside them is moved in ([`fit_date_to_years`]).
     #[serde(default)]
     pub year_span: Option<(i32, i32)>,
+    /// The transport modes the map is built for (`[bus_transport]` ... in global.cfg); empty:
+    /// every vehicle may run on it.
+    #[serde(default)]
+    pub transport: Vec<String>,
 }
 
 /// The span of years a map's `[years]` allows: none for `0 0`; no first year when the first
@@ -909,7 +913,7 @@ fn read_map(d: &Path, folder: &str, lang: &str) -> (Option<MapInfo>, Vec<PathBuf
     }
     // (the depot groups' first: a plain car group's name line is no depot)
     let hof = omsi_map::ailists::AiLists::load(&d.join("ailists.cfg")).ok().and_then(|l| l.groups.iter().filter(|g| g.is_depot).chain(l.groups.iter()).find_map(|g| g.hof.clone())).unwrap_or_default();
-    (Some(MapInfo { name: if g.name.trim().is_empty() { folder.to_string() } else { g.name.trim().to_string() }, friendly, file: format!("maps/{folder}/global.cfg"), description, entry_points: entries, hof, installed: in_content(d), year_span: year_span_of(&g) }), deps)
+    (Some(MapInfo { name: if g.name.trim().is_empty() { folder.to_string() } else { g.name.trim().to_string() }, friendly, file: format!("maps/{folder}/global.cfg"), description, entry_points: entries, hof, installed: in_content(d), year_span: year_span_of(&g), transport: g.transport.iter().map(|m| m.name().to_string()).collect() }), deps)
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -937,6 +941,19 @@ pub struct VehicleInfo {
     /// (Omsi.exe's number combo in the vehicle dialog; empty: the bus has no list).
     #[serde(default)]
     pub numbers: Vec<(String, String)>,
+    /// The transport modes of the vehicle: what its file declares, else what its shape says.
+    #[serde(default)]
+    pub transport: Vec<String>,
+}
+
+/// Why `vehicle` may not run on `map`, or `None` when it may (a map that names no transport
+/// mode takes every vehicle). The game checks the same rule when it starts.
+pub fn transport_refusal(map: &MapInfo, vehicle: &VehicleInfo) -> Option<String> {
+    let modes = |v: &[String]| -> omsi_cfg::transport::ModeSet { v.iter().filter_map(|n| omsi_cfg::transport::TransportMode::from_name(n)).collect() };
+    match omsi_cfg::transport::admit(modes(&map.transport), modes(&vehicle.transport), false) {
+        omsi_cfg::transport::Admission::Allowed => None,
+        omsi_cfg::transport::Admission::Refused(why) => Some(why),
+    }
 }
 
 /// Names in older vehicle packs use underscores as spaces.
@@ -1240,7 +1257,7 @@ fn read_vehicle_folder(folder: &str, dirs: &[PathBuf], lang: &str) -> (Vec<Vehic
         if !missing_packs.is_empty() {
             log_line(&format!("vehicles: {} borrows parts from packs that are not installed: {}", f.display(), missing_packs.join(", ")));
         }
-        out.push(VehicleInfo { name: if name.is_empty() { stem.clone() } else { name }, manufacturer: v.manufacturer.trim().to_string(), type_name: v.type_name.trim().to_string(), file: rel, folder: folder.to_string(), description, default_paint: v.default_paint.trim().to_string(), paints, hofs, installed: in_content(f), missing_packs, numbers: v.numbers_with_plates().to_vec() });
+        out.push(VehicleInfo { name: if name.is_empty() { stem.clone() } else { name }, manufacturer: v.manufacturer.trim().to_string(), type_name: v.type_name.trim().to_string(), file: rel, folder: folder.to_string(), description, default_paint: v.default_paint.trim().to_string(), paints, hofs, installed: in_content(f), missing_packs, numbers: v.numbers_with_plates().to_vec(), transport: v.transport_modes().0.iter().map(|m| m.name().to_string()).collect() });
     }
     deps.sort();
     deps.dedup();

@@ -291,6 +291,8 @@ impl Renderer {
         ) else {
             return;
         };
+        let ground_bound = self.ground_should_bind();
+        self.ground_bound.set(ground_bound);
         let mut entries = vec![
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -319,12 +321,13 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 8,
                     // (Enhanced+: the traced lighting, full size, in place of the SSAO)
+                    // (while the AO is off the ground albedo picture is bound here, see `ground_should_bind`)
                     resource: wgpu::BindingResource::TextureView(
                         self.rt
                             .as_ref()
                             .and_then(|r| r.targets.as_ref())
                             .map(|t| &t.out)
-                            .or(self.targets.ao.as_ref().map(|a| &a.blur_view))
+                            .or(self.targets.ao.as_ref().map(|a| match self.targets.ground.as_ref().filter(|_| ground_bound) { Some((_, g)) => g, None => &a.blur_view }))
                             .unwrap_or(&self.white_texture.view),
                     ),
                 },
@@ -371,6 +374,13 @@ impl Renderer {
             label: Some("camera"),
             layout: &self.camera_layout,
             entries: &entries,
+        });
+        scene.ground_camera_bind_group = ground_bound.then(|| {
+            let mut other = entries.clone();
+            if let Some(e) = other.iter_mut().find(|e| e.binding == 8) {
+                e.resource = wgpu::BindingResource::TextureView(&self.white_texture.view);
+            }
+            self.device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("camera, ground albedo pass"), layout: &self.camera_layout, entries: &other })
         });
         scene.camera_bind_group = Some(bg);
         let sbg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {

@@ -169,6 +169,21 @@ export function mapName(file) {
   return (file || '').replace(/\\/g, '/').split('/').filter(Boolean).slice(-2, -1)[0] || file;
 }
 
+/** Transport modes (bus, tram, railway, metro, trolleybus). A map that names none takes every
+ * vehicle; otherwise the vehicle must share a mode with it. Mirrors `transport_refusal` of the
+ * launcher core, so the pickers can say why before the game does. */
+export const MODES = ['bus', 'tram', 'railway', 'metro', 'trolleybus'];
+export const modeLabel = (m) => t({ bus: 'Bus', tram: 'Tram', railway: 'Railway', metro: 'Metro', trolleybus: 'Trolleybus' }[m] || m);
+export function transportRefusal(map, vehicle) {
+  const a = map?.transport || [];
+  const b = vehicle?.transport || [];
+  if (!a.length || a.some((m) => b.includes(m))) return null;
+  return t('This map is made for {maps} only; the vehicle counts as {vehicle}.', { maps: a.map(modeLabel).join(', '), vehicle: b.length ? b.map(modeLabel).join(', ') : t('nothing known') });
+}
+/** Modes worth showing as a tag: everything but a plain bus, whose tag would be noise on the
+ * thousands of stock buses. */
+export const shownModes = (x) => (x?.transport || []).filter((m) => m !== 'bus' || (x.transport.length > 1));
+
 export const curMap = () => S.maps?.find((m) => m.file === S.choice?.map);
 export const curBus = () => S.vehicles?.find((v) => v.file === S.choice?.bus);
 export const curLine = () => S.lines.list?.find((l) => l.name === S.choice?.line);
