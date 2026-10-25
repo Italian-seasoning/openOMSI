@@ -1213,7 +1213,7 @@ impl World {
         scene: &mut Scene,
         gpu: &mut GpuCache,
         obj: &ObjectCx,
-        inst: omsi_sim::scenery::SceneryInstance,
+        mut inst: omsi_sim::scenery::SceneryInstance,
         made: ObjectMade,
         mesh_instances: usize,
     ) {
@@ -1286,6 +1286,8 @@ impl World {
             }
         }
         let script_lamps = if lamp.is_none() { crate::place::lamps_switched_by_script(ot, pos, xf) } else { Vec::new() };
+        // (a Lua script drives it: it is stepped every frame and kept for them)
+        inst.lua_driven = !ot.sco.scripts.lua.is_empty();
         if inst.is_dynamic()
             || !script_lamps.is_empty()
             || !object_variants.is_empty()

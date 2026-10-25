@@ -150,6 +150,12 @@ pub struct Renderer {
     /// its own depth laid first (see `encode_prefill`), so that its costly shading runs
     /// once per visible surface.
     prepass_msaa_pipelines: Option<[wgpu::RenderPipeline; 6]>,
+    /// The ground albedo pass's pipelines (see `SceneBase::ground_pipeline_at`); none where
+    /// the enhanced path is left out or on OpenGL.
+    ground_pipelines: Option<[wgpu::RenderPipeline; 8]>,
+    /// Whether the camera group's slot 8 (the AO's picture) holds the ground albedo picture
+    /// instead - while the ambient occlusion is off, see `ground_should_bind`.
+    ground_bound: std::cell::Cell<bool>,
     /// Ambient occlusion and its blur; none on OpenGL (GLES), whose shading language cannot
     /// read a depth texture texel by texel - the pipelines failed there, AO off or not (#422).
     ssao_pipeline: Option<wgpu::RenderPipeline>,

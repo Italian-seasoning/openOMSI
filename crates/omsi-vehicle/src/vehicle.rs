@@ -120,6 +120,9 @@ pub struct Vehicle {
     pub inv_min_turn_radius: f32,
     pub ai_delta_height: f32,
     pub axles: Vec<Axle>,
+    /// `[vehicle_script]` (openOMSI): Lua (`.lua`) or compiled (`.oop`) scripts that belong to the
+    /// vehicle and run while it is the player's, with the plugin API (see `omsi_plugin`).
+    pub script_files: Vec<PathBuf>,
     pub attachments: Vec<Attachment>,
     pub coupling_front: Option<Coupling>,
     pub coupling_back: Option<Coupling>,
@@ -421,6 +424,12 @@ impl Vehicle {
                 "contact_shoe" => v.contact_shoes.push(r.f32s::<6>()),
                 "ai_brakeperformance" => v.ai_brake_performance = Some(r.f32s::<5>()),
                 "fixed" => v.fixed = true,
+                "vehicle_script" => {
+                    let rel = r.str().trim().to_string();
+                    if !rel.is_empty() {
+                        v.script_files.push(omsi_cfg::resolve_path(&base, &rel));
+                    }
+                }
                 k2 if omsi_trolley::TrolleyDef::keywords().contains(&k2) => {
                     let lines = r.rest_of_block();
                     v.trolley.take_block(k2, &lines);
@@ -643,6 +652,13 @@ mod tests {
     use super::*;
 
     #[test]
+    #[test]
+    fn vehicle_scripts_are_listed_beside_the_file() {
+        let v = Vehicle::parse(&CfgFile::from_str("Vehicles/Bus/x.bus", "[mass]\n10\n[vehicle_script]\nscripts/main.lua\n[vehicle_script]\nextra.oop\n"));
+        assert_eq!(v.script_files.len(), 2);
+        assert!(v.script_files[0].ends_with("scripts/main.lua") && v.script_files[1].ends_with("extra.oop"));
+    }
+
     fn axles_with_and_without_keywords() {
         let keyed = "[newachse]\nachse_long\n2.943\nachse_raddurchmesser\n1.023\n1.05\nachse_feder\n240\nachse_antrieb\n0\n[newachse]\n-2.577\n2.4\n1.4\n1.023\n280\n116\n20\n1\n0.015\n\n[mass]\n10.9\n[cog]\n0\n0.2\n0.8\n";
         let v = Vehicle::parse(&CfgFile::from_str("x.bus", keyed));

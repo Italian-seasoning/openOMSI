@@ -11,6 +11,7 @@ pub const GROUPS: &[(&str, &str)] = &[
     ("hof", "The loaded HOF depot file"),
     ("duty", "Duty and timetable"),
     ("map", "The map"),
+    ("object", "Scenery objects (for scripts a .sco names)"),
     ("traffic", "AI traffic"),
     ("people", "People"),
     ("time", "Time"),

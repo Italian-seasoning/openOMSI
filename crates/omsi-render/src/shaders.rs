@@ -34,6 +34,7 @@ pub(crate) const ENHANCED: &str = concat!(
     include_str!("shaders/enhanced/03_surface.wgsl"),
     include_str!("shaders/enhanced/04_shade.wgsl"),
     include_str!("shaders/enhanced/05_puddles.wgsl"),
+    include_str!("shaders/enhanced/06_ground.wgsl"),
 );
 
 /// FSR 1's passes for a picture of `format`: on an sRGB one they take its texels to gamma
@@ -95,13 +96,13 @@ mod tests {
     /// metres, and the lamps' shadow maps by the tile their record names and the saloon's visibility term
     /// with the ground no longer lit by the tile light map, and the street-scale
     /// occlusion, the bounced light and the lightning's light, and the sun's share through the clouds' shadow field, and the cube maps of lamps that shine every way, and the wet roads' and the water's traced reflection), and the textures read with FSR 1's mip bias, `camera.lod`,
-    /// and a script's screen never taken for a pane (#2927).
+    /// and a script's screen never taken for a pane (#2927), and the lamp tiles' taps in loops of fixed bounds.
     /// (with Unix line ends: a Windows checkout may turn the parts' into CRLF, as it did the
     /// single files', and the 0.2.31 release's Windows test failed on that alone)
     #[test]
     fn assembled_shaders_are_the_old_files() {
         let (scene, enhanced) = (super::SCENE.replace("\r\n", "\n"), super::ENHANCED.replace("\r\n", "\n"));
-        assert_eq!((scene.len(), fnv1a(&scene)), (130_362, 0x4f94b7116cd84139));
-        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (93_358, 0x1db88b67eb24e503));
+        assert_eq!((scene.len(), fnv1a(&scene)), (130_362, 0x4f94_b711_6cd8_4139));
+        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (96_379, 0xc6d7_6fdf_c4a4_9ae7));
     }
 }

@@ -838,6 +838,7 @@ fn object_program(
         || animated
         || has_mouse_events
         || sco.sound.is_some()
+        || !sco.scripts.lua.is_empty()
     {
         Some(Arc::new(omsi_sim::scenery::compile_scenery(
             root,

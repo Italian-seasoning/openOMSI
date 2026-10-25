@@ -371,6 +371,7 @@ flags! {
     OMSI_NO_GLARE: Bool, Switch, Frame, "off", "No sun glare.";
     OMSI_NO_GLASS_PICTURE: Bool, Switch, Frame, "off", "No picture behind the glass (rain films).";
     OMSI_NO_GROUND_PAINT: Bool, Switch, Use, "off", "No painted ground layers.";
+    OMSI_NO_GROUND_PASS: Bool, Switch, Frame, "off", "The terrain's paint layers lit one by one again, not laid into one albedo picture first (A/B).";
     OMSI_NO_GROUND_SPLINE_BATCHING: Bool, Switch, Use, "off", "No batching of ground splines.";
     OMSI_NO_GUARD: Bool, Switch, Use, "off", "No start guard: a start that crashes or hangs is not healed by an update or by going back to the version before.";
     OMSI_NO_HARDWARE_ID: Bool, Switch, Once, "off", "LAN: the game sends no hardware identifier (a host can then turn the player away, and cannot ban the machine).";

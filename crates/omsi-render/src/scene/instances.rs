@@ -32,6 +32,7 @@ impl Renderer {
             corona_runs: Vec::new(),
             draw_buf: None,
             camera_bind_group: None,
+            ground_camera_bind_group: None,
             shadow_bind_group: None,
             precip_bind_group: None,
             sky_bind_group: None,
