@@ -181,6 +181,7 @@ pub(super) fn material_extra(
         rain_film: false,
         water: false,
         display: false,
+        own_light_text: false,
         screen: false,
         // (a scenery object's slot is an LED panel only by the modeller's word)
         led: led_glow_effect(ov).is_some_and(|g| g > 0.0),
@@ -388,7 +389,7 @@ pub(super) fn text_material(renderer: &Renderer, scene: &mut Scene, tex: Texture
 pub(super) fn text_material_lit(renderer: &Renderer, scene: &mut Scene, tex: TextureId, alpha: AlphaMode, slot_ov: &[&MaterialDef], slot_mat: Option<&omsi_o3d::Material>, lit: bool) -> MaterialId {
     let extra = material_extra(slot_ov, None, None, [0.0; 4]);
     let plain = MaterialExtra::default();
-    let border_only = MaterialExtra { border: extra.border, display: lit, ..plain.clone() };
+    let border_only = MaterialExtra { border: extra.border, display: lit, own_light_text: lit, ..plain.clone() };
     renderer.address_next.set(tex_addressing(slot_ov.iter().copied()));
     let emissive = text_emissive(slot_ov, slot_mat);
     renderer.add_material_extra(scene, Some(tex), alpha, [1.0; 4], false, None, None, None, None, emissive, border_only)

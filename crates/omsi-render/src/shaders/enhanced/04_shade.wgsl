@@ -827,8 +827,10 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         // (`material.glow.y`: the share of it the modeller gives the panel, `[led_glow_effect]`)
         emit = emit + tex.rgb * enh.led.x * material.glow.y * alpha * lm_gate * max(enh.exposure.z * 2.0, 0.8) * mix(1.0, display_dim(1.0), cab_dim);
     } else if (material.emissive.w < -0.5) {
-        // a display's text (see MaterialExtra::display)
-        emit = emit + tex.rgb * 0.35 * max(enh.exposure.z * 2.0, 0.8) * display_dim(1.0);
+        // a display's text (see MaterialExtra::display); -1.25: a route arrow's text, a
+        // lamp of its own (see MaterialExtra::own_light_text)
+        let own = select(1.0, 8.0, material.emissive.w < -1.2);
+        emit = emit + tex.rgb * 0.35 * own * max(enh.exposure.z * 2.0, 0.8) * display_dim(1.0);
     }
     if (material.glow.x > 0.0) {
         // [matl_glow] (see `matl_glow_light`): the material is its own light, drawn in HDR.

@@ -180,6 +180,9 @@ pub struct MaterialExtra {
     /// by itself, as a lit matrix does, instead of taking only the light that reaches it
     /// under the bus's front overhang, where it was hardly readable by day.
     pub display: bool,
+    /// With `display`: the text is a lamp of its own, not a screen's glow - a route arrow's
+    /// street or stop name, drawn in HDR so it shines (and blooms) in the dark.
+    pub own_light_text: bool,
     /// A screen the bus draws itself - a `[useTextTexture]` or `[useScriptTexture]` slot:
     /// the IBIS, the matrix displays, the dashboard's LCDs. The enhanced picture's glow
     /// and FXAA leave it alone (see `MASK_FORMAT`): FXAA took half the contrast out of
@@ -798,7 +801,7 @@ impl Renderer {
                     + if extra.night_alpha && alpha == AlphaMode::Blend && nightmap.is_some()
                         && !extra.transmap_declared && transmap.is_none() { 16.0 } else { 0.0 },
             ],
-            emissive: [emissive[0], emissive[1], emissive[2], if extra.rain_film { 2.0 } else if extra.glass { 1.0 } else if extra.led && extra.led_sign { -3.0 } else if extra.led { -2.0 } else if extra.display { -1.0 } else { 0.0 }],
+            emissive: [emissive[0], emissive[1], emissive[2], if extra.rain_film { 2.0 } else if extra.glass { 1.0 } else if extra.led && extra.led_sign { -3.0 } else if extra.led { -2.0 } else if extra.display && extra.own_light_text { -1.25 } else if extra.display { -1.0 } else { 0.0 }],
             specular: extra.specular,
             bump: [
                 bump.map(|b| b.1).unwrap_or(0.0),
