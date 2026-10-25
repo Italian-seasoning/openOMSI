@@ -221,6 +221,9 @@ pub struct Vehicle {
     pub rail_coupler: Option<crate::rail_spec::RailCoupler>,
     /// `[rail_power]`: where the vehicle gets its current (`Auto`: from its shape).
     pub rail_power: crate::rail_spec::PowerKind,
+    /// `[vehicle_script]` (openOMSI): Lua (`.lua`) or compiled (`.oop`) scripts that belong to the
+    /// vehicle and run while it is the player's, with the plugin API (see `omsi_plugin`).
+    pub script_files: Vec<PathBuf>,
     pub attachments: Vec<Attachment>,
     pub coupling_front: Option<Coupling>,
     pub coupling_back: Option<Coupling>,
@@ -576,6 +579,12 @@ impl Vehicle {
                     let lines = r.rest_of_block();
                     v.suspensions.push(Suspension::parse(&lines));
                 }
+                "vehicle_script" => {
+                    let rel = r.str().trim().to_string();
+                    if !rel.is_empty() {
+                        v.script_files.push(omsi_cfg::resolve_path(&base, &rel));
+                    }
+                }
                 k2 if omsi_trolley::TrolleyDef::keywords().contains(&k2) => {
                     let lines = r.rest_of_block();
                     v.trolley.take_block(k2, &lines);
@@ -815,6 +824,13 @@ mod tests {
         assert_eq!(v.transport.describe(), "tram");
         assert!(v.unknown_keywords.is_empty());
         assert!(Vehicle::parse(&CfgFile::from_str("x.bus", "[mass]\n10\n")).transport.is_empty());
+    }
+
+    #[test]
+    fn vehicle_scripts_are_listed_beside_the_file() {
+        let v = Vehicle::parse(&CfgFile::from_str("Vehicles/Bus/x.bus", "[mass]\n10\n[vehicle_script]\nscripts/main.lua\n[vehicle_script]\nextra.oop\n"));
+        assert_eq!(v.script_files.len(), 2);
+        assert!(v.script_files[0].ends_with("scripts/main.lua") && v.script_files[1].ends_with("extra.oop"));
     }
 
     #[test]
