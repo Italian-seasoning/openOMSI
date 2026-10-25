@@ -466,6 +466,15 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
   noisy sample of the cloud march and took seconds to clear; at speed a new one came before the
   last had cleared, so the clouds stayed grainy and banded. The new picture is now the average of
   four samples before it replaces the old one.
+- **The headlights light the road as in OMSI 2 in Vanilla and Vanilla+**: the player's
+  `[spotlight]` is Omsi.exe's Direct3D spot light - from the spotlight's own place, 0.3 x its
+  colour as diffuse and 0.1 x as ambient light, attenuation 1 / (0.2 + d / R + 40 d² / R²),
+  its cone with a falloff of 2 - lit at the vertices as Direct3D lights them. The old fit
+  (full strength out to an eighth of the range, never below 15 % at a grazing angle) left a
+  flat sheet reaching far down the road with some buses and lit kerbs, hedges and trees
+  hardly at all. Measured against OMSI 2 with the Kajosoft Citaro, headlights on less off:
+  the road +6 / +7 / +8 / +7 / +6 from the bumper out (OMSI 2: +5 / +4 / +5 / +7 / +6), the
+  kerb +26 / +15 (+21 / +15). AI vehicles' spots light the road no longer, as in OMSI 2.
 - **The launcher's bus preview is no longer misted over**: the bus is made for it (the
   showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
   vehicle starts at without a weather. The
