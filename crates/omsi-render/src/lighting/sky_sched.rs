@@ -11,7 +11,11 @@ pub(crate) const SKY_CUBE_SLICES: u32 = 4;
 /// layered grain from one start point; the cube in use averages it out over seconds, and a
 /// cube filled with one round showed that grain after every change of eye - driving fast,
 /// the clouds were mush most of the time.
-pub(crate) const STAGE_ROUNDS: u32 = 4;
+pub(crate) fn stage_rounds() -> u32 {
+    static ROUNDS: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    // (OMSI_SKY_STAGE_ROUNDS=1 is the single sample of before, for an A/B)
+    *ROUNDS.get_or_init(|| omsi_cfg::flags::OMSI_SKY_STAGE_ROUNDS.parse::<u32>().unwrap_or(4).clamp(1, SKY_CUBE_ROUNDS))
+}
 /// The most slices drawn in one frame (owed ones catch up two at a time).
 const SLICES_PER_FRAME: u32 = 2;
 /// The reflection probe is redrawn this often (seconds): every 30 frames it was, twice a
@@ -81,7 +85,7 @@ impl Default for SkySched {
 impl SkySched {
     /// Whether the cube being filled for a new eye is complete.
     pub(crate) fn staging_full(&self) -> bool {
-        self.staged >= 6 * SKY_CUBE_SLICES * STAGE_ROUNDS
+        self.staged >= 6 * SKY_CUBE_SLICES * stage_rounds()
     }
 
     /// Start filling a cube for a new eye unless one is being filled already.
@@ -180,7 +184,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(seen.len() as u32, 6 * SKY_CUBE_SLICES * STAGE_ROUNDS);
+        assert_eq!(seen.len() as u32, 6 * SKY_CUBE_SLICES * stage_rounds());
         assert_eq!((face, round), (2, 5));
         s.start_staging(DVec3::ZERO);
         assert_eq!(s.staging_eye, Some(DVec3::new(1.0, 2.0, 3.0)), "a fill under way is not restarted");
@@ -213,7 +217,7 @@ mod tests {
             assert!(s.plan(&mut face, &mut round, 1.0 / 240.0)[0].is_some_and(|p| p.staging));
             frames += 1;
         }
-        assert_eq!(frames, 6 * SKY_CUBE_SLICES * STAGE_ROUNDS);
+        assert_eq!(frames, 6 * SKY_CUBE_SLICES * stage_rounds());
     }
 
     #[test]
