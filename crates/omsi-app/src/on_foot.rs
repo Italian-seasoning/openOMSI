@@ -51,6 +51,9 @@ const MAX_WALK_GRADIENT: f64 = 1.191_753_6;
 /// The gradient is taken between points this far either side (m), so that a kerb's edge
 /// reads as a step and not as a wall.
 const GRADIENT_HALF_SPAN: f64 = 0.25;
+/// How far (m) a people's path may be above or below the walker's feet and still lead
+/// them: a staircase's step, not the street under a bridge.
+const PATH_REACH: f64 = 1.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FootCam {
@@ -1221,7 +1224,18 @@ pub(crate) fn tick(cx: &mut OnFootCx, dt: f32) {
             let z = f.pos.z;
             let probe = Obb { center: next, half: DVec2::splat(3.0), heading: 0.0, z0: z - 1.0, z1: z + 2.5, velocity: DVec2::ZERO, mass: 0.0, pole: None, id: -1 };
             let walls = w.data.peek().lists.collision.obstacles_near(&probe);
-            let mut boxes: Vec<Obb> = walls.into_iter().filter(|o| o.z0 < z + 1.6 + f.lift && o.z1 > z + 0.45 + f.lift).collect();
+            // The ways the map gives the passengers are the walker's too (a gate in a fence, a
+            // doorway, a staircase, a ramp): a wall a people's path goes through is no wall
+            // there, and the path's height is the floor where the ground says otherwise.
+            let net = cx.traffic.traffic.as_ref().map(|t| &t.net);
+            let mut boxes: Vec<Obb> = walls
+                .into_iter()
+                .filter(|o| o.z0 < z + 1.6 + f.lift && o.z1 > z + 0.45 + f.lift)
+                .filter(|o| {
+                    let (s, c) = o.heading.sin_cos();
+                    !net.is_some_and(|n| n.path_through_box(o.center, o.half + DVec2::splat(RADIUS), DVec2::new(c, -s), DVec2::new(s, c), z + f.lift, PATH_REACH))
+                })
+                .collect();
             boxes.extend(vehicle_boxes(next, 20.0, cx.player.player.as_ref(), cx.player.placed, cx.traffic.traffic.as_ref(), cx.net));
             for _ in 0..2 {
                 for o in &boxes {
@@ -1235,18 +1249,26 @@ pub(crate) fn tick(cx: &mut OnFootCx, dt: f32) {
             // limit afresh from the ground stepped onto.
             let footing = *f.footing.get_or_insert(z);
             let ground = w.walk_height_reach(next.x, next.y, z + f.lift, 1.0);
+            // (on a people's path the floor is the path's where the ground differs from it:
+            // the stairs of an object whose steps are no surface, a landing under a roof)
+            let on_path = net.and_then(|n| n.footing_on_path(next, z + f.lift, PATH_REACH));
+            let ground = match on_path {
+                Some(p) if ground.is_none_or(|g| (g - p.z).abs() > 0.2) => Some(p.z),
+                _ => ground,
+            };
+            let on_path = on_path.is_some();
             let gradient_at = |g: f64| ground_gradient(|x, y| w.walk_height_reach(x, y, g, 0.5), next, g);
             // (the gradient is only needed for ground above a step over the footing)
-            let blocked = ground.is_some_and(|g| g > footing + STEP && too_steep_to_climb(g, gradient_at(g), footing));
+            let blocked = !on_path && ground.is_some_and(|g| g > footing + STEP && too_steep_to_climb(g, gradient_at(g), footing));
             match ground {
-                Some(g) if blocked || g - (z + f.lift) > STEP => {
+                Some(g) if blocked || (!on_path && g - (z + f.lift) > STEP) => {
                     // too high a step: stay (and lose the speed into it)
                     next = f.pos.truncate();
                     f.vel *= 0.3;
                 }
                 Some(g) => {
                     let feet = z + f.lift;
-                    if gradient_at(g) <= MAX_WALK_GRADIENT {
+                    if on_path || gradient_at(g) <= MAX_WALK_GRADIENT {
                         f.footing = Some(g);
                     }
                     if g >= feet - 0.02 || f.grounded() && feet - g < 0.4 {

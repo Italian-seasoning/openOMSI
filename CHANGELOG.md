@@ -461,6 +461,10 @@ promoted to stable releases (see [docs/VERSIONING.md](docs/VERSIONING.md)); the 
 
 ### Fixes
 
+- **On foot, the player walks wherever the passengers' paths lead**: a staircase, a ramp, a gate
+  through a fence or a doorway the map gives the AI passengers is now walkable by hand too, at
+  the path's height (the step and slope limits and the walls no longer stop the walker on a
+  people's path), instead of only where the ground happens to allow it.
 - **The launcher's bus preview is no longer misted over**: the bus is made for it (the
   showroom and `--export-glb`) on a mild day (22 °C) instead of at 0 °C, the temperature a
   vehicle starts at without a weather. The

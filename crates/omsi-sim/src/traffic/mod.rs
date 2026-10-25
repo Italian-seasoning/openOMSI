@@ -14,6 +14,7 @@ mod extend;
 mod lane;
 mod lights;
 mod network;
+mod walk_path;
 pub mod way;
 #[cfg(test)]
 mod extend_tests;
@@ -23,6 +24,7 @@ pub use ai_state::{
     EMERGENCY_LIMIT_FACTOR, EMERGENCY_LIMIT_PLUS, JERK, MAX_BRAKE, ORDINARY_BRAKE, SIGNAL_BEFORE_CHANGE,
 };
 pub use extend::LINK_TOLERANCE;
+pub use walk_path::PathFooting;
 pub use lane::{arc_point, pool_density, wrap_deg, Lane, LaneBuilder, LaneKey, LaneKind, AIR_NO_LIMIT_KMH, DEFAULT_PRIORITY};
 pub use lights::{Aspect, LightStop, TrafficLightController, DEFAULT_APPROACH, RAIL_ASK_DISTANCE, UNLINKED_PHASE, WAITING_AT_LINE};
 #[cfg(test)]
