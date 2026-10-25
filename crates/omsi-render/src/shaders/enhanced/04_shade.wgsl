@@ -55,15 +55,25 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
     // one and stays.
     let pic_lod = led_lod(duv, vec2<f32>(textureDimensions(t_diffuse)));
     let led_pic = material.emissive.w < -1.5 && enh.led.y < pic_lod;
-    var tex = diffuse_border(textureSampleBias(t_diffuse, s_diffuse, duv, camera.lod.x), duv);
-    if (is_snow_pane()) {
-        tex = snow_on_pane(in, film_water);
-    }
-    if (led_pic) {
-        tex = diffuse_border(textureSampleLevel(t_diffuse, s_diffuse, duv, enh.led.y), duv);
+    // The painted ground's albedo comes from the picture `fs_ground` laid (the base's and its
+    // layers', the frame's `camera.lod.y`): the terrain's base is lit once for all of them.
+    // (A condition of the draw alone, so the texture reads below stay in uniform control flow;
+    // `Renderer::plan_ground` has seen to it that every draw this holds for is in that picture.)
+    let from_ground = camera.lod.y > 0.5 && terrain && !TERRAIN_PAINT && !capture && material.params.x < 0.5 && material.params.z < 0.5;
+    var tex = vec4<f32>(1.0);
+    if (from_ground) {
+        tex = vec4<f32>(textureLoad(t_ao, vec2<i32>(in.clip.xy), 0).rgb, 1.0);
+    } else {
+        tex = diffuse_border(textureSampleBias(t_diffuse, s_diffuse, duv, camera.lod.x), duv);
+        if (is_snow_pane()) {
+            tex = snow_on_pane(in, film_water);
+        }
+        if (led_pic) {
+            tex = diffuse_border(textureSampleLevel(t_diffuse, s_diffuse, duv, enh.led.y), duv);
+        }
     }
     let diffuse_a = tex.a;
-    if (terrain && material.extra.y > 0.0) {
+    if (terrain && !from_ground && material.extra.y > 0.0) {
         let det = textureSampleBias(t_light, s_diffuse, in.uv * material.extra.y, camera.lod.x);
         tex = vec4<f32>(clamp(tex.rgb * det.rgb, vec3<f32>(0.0), vec3<f32>(1.0)), tex.a);
     }
@@ -235,13 +245,13 @@ fn shade_enhanced(in: FsIn, puddle_weight: ptr<function, vec2<f32>>, capture: bo
         let inv = inverseSqrt(max(max(dot(t, t), dot(b, b)), 1e-12));
         n = normalize(n - (t * inv * slope.x + b * inv * slope.y) * 0.6);
     }
-    var albedo = tex.rgb * material.color.rgb;
+    var albedo = select(tex.rgb * material.color.rgb, tex.rgb, from_ground);
     // OMSI materials have separate diffuse and ambient colours. Some interiors have
     // black diffuse but white ambient: using diffuse for both made them pitch black.
     // Keep the direct response, and weather both colours with the same surface effects.
     // A slot without a texture (ambient.w -1) takes its diffuse colour for both: Omsi.exe's
     // white ambient of every o3d slot under a strong sky turned a coloured model white (#1737).
-    var ambient_albedo = select(tex.rgb * material.ambient.rgb, albedo, material.ambient.w < -0.5);
+    var ambient_albedo = select(tex.rgb * material.ambient.rgb, albedo, material.ambient.w < -0.5 || from_ground);
     var detail_factor = 1.0;
     if (camera.flags.x > 0.5 && (terrain || in.params2.w > 0.5)) {
         let k = clamp(1.0 - (dist - 25.0) / 120.0, 0.0, 1.0);

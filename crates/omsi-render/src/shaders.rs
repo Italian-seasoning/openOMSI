@@ -34,6 +34,7 @@ pub(crate) const ENHANCED: &str = concat!(
     include_str!("shaders/enhanced/03_surface.wgsl"),
     include_str!("shaders/enhanced/04_shade.wgsl"),
     include_str!("shaders/enhanced/05_puddles.wgsl"),
+    include_str!("shaders/enhanced/06_ground.wgsl"),
 );
 
 /// FSR 1's passes for a picture of `format`: on an sRGB one they take its texels to gamma
@@ -102,6 +103,6 @@ mod tests {
     fn assembled_shaders_are_the_old_files() {
         let (scene, enhanced) = (super::SCENE.replace("\r\n", "\n"), super::ENHANCED.replace("\r\n", "\n"));
         assert_eq!((scene.len(), fnv1a(&scene)), (130_362, 0x57b1_11c7_f717_9d08));
-        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (92_256, 0xd126_2dce_10a7_3b95));
+        assert_eq!((enhanced.len(), fnv1a(&enhanced)), (94_897, 0x3e2a_389b_2a2f_84b0));
     }
 }

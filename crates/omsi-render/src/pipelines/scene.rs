@@ -18,6 +18,9 @@ pub(crate) struct SceneBase {
     bias: i32,
 }
 
+/// The ground albedo picture's format (see `fs_ground`): sRGB, so that the layers blend as light.
+pub(crate) const GROUND_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+
 const VERTEX_ATTRIBUTES: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
 
 impl SceneBase {
@@ -162,6 +165,54 @@ impl SceneBase {
     }
 
     pub(crate) const PIPELINES: usize = PIPE_KINDS as usize * 4;
+
+    /// The ground albedo pass's pipelines (`fs_ground`): the terrain's opaque base (0 to 3:
+    /// two-sided or culled, without or with the surface bias) and its paint layers blended
+    /// over it (4 to 7). Depth is only tested, against the depth prepass's.
+    pub(crate) fn ground_pipeline_at(&self, device: &wgpu::Device, index: usize) -> wgpu::RenderPipeline {
+        let paint = index >= 4;
+        let (cull, surface) = (index & 2 != 0, index & 1 != 0);
+        let bias = if surface { self.bias } else { 0 };
+        let blend = paint.then_some(wgpu::BlendState {
+            color: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::SrcAlpha, dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha, operation: wgpu::BlendOperation::Add },
+            // (the alpha channel stays as the base wrote it)
+            alpha: wgpu::BlendComponent { src_factor: wgpu::BlendFactor::Zero, dst_factor: wgpu::BlendFactor::One, operation: wgpu::BlendOperation::Add },
+        });
+        compile_pipeline(device, &wgpu::RenderPipelineDescriptor {
+            label: Some("ground albedo"),
+            layout: Some(&self.layout),
+            vertex: wgpu::VertexState {
+                module: &self.shader,
+                entry_point: Some("vs_main"),
+                buffers: &[self.vertex_layout.clone()],
+                compilation_options: Default::default(),
+            },
+            primitive: one_sided_primitive(cull),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState {
+                    constant: -bias,
+                    slope_scale: if bias != 0 { -bias.signum() as f32 * 2.0 } else { 0.0 },
+                    clamp: 0.0,
+                },
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &self.shader,
+                entry_point: Some("fs_ground"),
+                targets: &[Some(wgpu::ColorTargetState { format: GROUND_FORMAT, blend, write_mask: wgpu::ColorWrites::ALL })],
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: &[("TERRAIN_PAINT", if paint { 1.0 } else { 0.0 })],
+                    ..Default::default()
+                },
+            }),
+            multiview_mask: None,
+            cache: crate::pipeline_cache::get(device).as_ref(),
+        })
+    }
 
     /// The pipeline at `index` of the ones per `pipe_code` (kind, then culled, then surface
     /// bias): the kind decides blending and the depth write.

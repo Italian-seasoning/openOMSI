@@ -150,6 +150,10 @@ impl Renderer {
         // surface (without multisampling, see `share_depth`)
         let depth_wanted = puddles_wanted || glass_on || (enhanced && (with_overlays || xr_view)) || (self.depth_readback && projection.is_none());
         let prepass_on = ao_on || depth_wanted;
+        // the terrain's paint laid into one albedo picture first: the window's enhanced
+        // picture, single-sampled, with the camera group's slot 8 free of the AO
+        let ground_ok = with_overlays && enhanced && projection.is_none() && !second_eye && !ao_on && !rt_frame && prepass_on && self.options.msaa <= 1
+            && exclude_texture.is_none() && !env.no_ground_pass && self.ground_pipelines.is_some();
         let prepass_reach = if depth_wanted || env.no_ao_reach { f32::MAX } else { AO_PREPASS_REACH };
         // (only the bind group is made again, by `upload_draw_list`: dropping the instance
         // buffers for it wrote every instance's entries again at each render-scale step)
@@ -157,6 +161,10 @@ impl Renderer {
             // a new AO texture: the camera bind group must point at it
             scene.camera_bind_group = None;
             self.targets.hdr_targets.clear();
+        }
+        // (slot 8 holds the AO's picture or the ground albedo's: the group is made again when that changes)
+        if prepass_on && self.ground_bound.get() != self.ground_should_bind() {
+            scene.camera_bind_group = None;
         }
         if rt_frame && self.rt.as_mut().is_some_and(|rt| rt.ensure_targets(&self.device, width, height)) {
             // the camera bind group must point at the new lighting texture
@@ -221,6 +229,7 @@ impl Renderer {
             lamp_shadows,
             rt_frame,
             ao_on,
+            ground_ok,
             prepass_on,
             prepass_reach,
             dt,

@@ -29,6 +29,8 @@ pub(crate) struct DrawPlan {
     /// opaque/alpha-tested and blended draws of the main pass
     pub main_draws: [usize; 2],
     pub has_presurface: bool,
+    /// the terrain's paint laid into one albedo picture before the main pass (see `plan_ground`)
+    pub ground: GroundPlan,
 }
 
 impl DrawPlan {
@@ -323,6 +325,7 @@ impl Renderer {
         // wherever that spline's prepass already rejected the terrain underneath.
         let mut main_batches: Vec<Batch> = Vec::new();
         let mut presurface_batch_end = 0;
+        let mut terrain_blends = 0..0;
         // the blended (and, drawn in model order, all) slots of the vehicle the camera is in
         let mut cab_batches: Vec<Batch> = Vec::new();
         let mut cab_items: Vec<DrawItem> = Vec::new();
@@ -377,11 +380,15 @@ impl Renderer {
                 opaque_items(scene, visible, exclude_texture, &mut items, &mut blended);
                 main_draws[0] += items.len();
                 batch_items(scene, &mut items, true, list, &mut main_batches);
+                let blends_from = main_batches.len();
                 let keyed = self.blended_order(scene, f, visible, &blended);
                 items.clear();
                 blended_items(scene, keyed, exclude_texture, &mut items, &mut cab_items);
                 main_draws[1] += items.len();
                 batch_items(scene, &mut items, false, list, &mut main_batches);
+                if phase == RenderPhase::Terrain {
+                    terrain_blends = blends_from..main_batches.len();
+                }
             }
             // Omsi.exe draws the vehicle the camera sits in last of all, with the view mask
             // of its inside (0x6f1520 -> 0x6f0430), after every phase of the map, the other
@@ -421,7 +428,10 @@ impl Renderer {
         if f.env.debug_draws {
             log::info!("  main pass: {} opaque/alpha-tested and {} blended draws in {} batches; prepass {} batches; draw list {} entries", main_draws[0], main_draws[1], main_batches.len(), prepass_batches.len(), list.len());
         }
-        DrawPlan { list: draw_list, main_batches, cab_batches, prepass_batches, prefill, msaa_safe_batches, presurface_batch_end, rain_batches: Vec::new(), main_draws, has_presurface }
+        // (the terrain's paint into one picture: not with an excavation, nor with draws left out
+        // by a debug switch, which would move the places `terrain_blends` keeps)
+        let ground = if has_presurface || f.env.skip_pipe.is_some() { GroundPlan::default() } else { self.plan_ground(scene, f, &mut main_batches, terrain_blends) };
+        DrawPlan { list: draw_list, main_batches, cab_batches, prepass_batches, prefill, msaa_safe_batches, presurface_batch_end, rain_batches: Vec::new(), main_draws, has_presurface, ground }
     }
 
     /// The order a phase's blended draws are drawn in: (rank, distance, instance), far

@@ -78,6 +78,9 @@ pub(crate) struct AoTargets {
     pub(crate) depth_tex: wgpu::Texture,
     pub(crate) ao_view: wgpu::TextureView,
     pub(crate) blur_view: wgpu::TextureView,
+    /// The ground albedo picture (`fs_ground`), full size: the camera group's slot 8 holds it
+    /// while the AO is off (`Renderer::ground_should_bind`).
+    pub(crate) ground_view: wgpu::TextureView,
     /// The last frame's picture (absolute radiance) for the bounced light.
     pub(crate) hist_view: wgpu::TextureView,
     /// Whether `hist_view` is a picture (not the single texel of the other pipelines).
@@ -234,6 +237,16 @@ impl Renderer {
         let depth_view = depth.create_view(&Default::default());
         let ao_view = ao.create_view(&Default::default());
         let blur_view = blur.create_view(&Default::default());
+        let ground_view = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("ground albedo"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: pipelines::scene::GROUND_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        }).create_view(&Default::default());
 
         let bg = |label: &str, tex: &wgpu::TextureView| {
             self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -293,6 +306,7 @@ impl Renderer {
             depth_tex: depth.clone(),
             ao_view,
             blur_view,
+            ground_view,
             hist_view,
             bounce,
             ssao_bg,
