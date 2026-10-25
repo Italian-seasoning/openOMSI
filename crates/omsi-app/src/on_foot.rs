@@ -55,6 +55,9 @@ const GRADIENT_HALF_SPAN: f64 = 0.25;
 /// How far (m) a people's path may be above or below the walker's feet and still lead
 /// them: a staircase's step, not the street under a bridge.
 const PATH_REACH: f64 = 1.0;
+/// How near (m) the step must be to the place a people's path crosses a collision box for
+/// the box to be no wall there: the gate, not the fence.
+const GATE_REACH: f64 = 1.5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FootCam {
@@ -1229,15 +1232,14 @@ pub(crate) fn tick(cx: &mut OnFootCx, dt: f32) {
             // doorway, a staircase, a ramp): a wall a people's path goes through is no wall
             // there, and the path's height is the floor where the ground says otherwise.
             let net = cx.traffic.traffic.as_ref().map(|t| &t.net);
-            // (only where the walker is on a path: a long fence or a hall's wall with a gate in
-            // it stays a wall everywhere else along its length)
-            let on_a_path = net.is_some_and(|n| n.footing_on_path(next, z + f.lift, PATH_REACH).is_some());
+            // (only at the crossing next to the step: a long fence with a gate at its far end
+            // stays a wall along the rest of its length)
             let mut boxes: Vec<Obb> = walls
                 .into_iter()
                 .filter(|o| o.z0 < z + 1.6 + f.lift && o.z1 > z + 0.45 + f.lift)
                 .filter(|o| {
                     let (s, c) = o.heading.sin_cos();
-                    !(on_a_path && net.is_some_and(|n| n.path_through_box(o.center, o.half + DVec2::splat(RADIUS), DVec2::new(c, -s), DVec2::new(s, c), z + f.lift, PATH_REACH)))
+                    !net.is_some_and(|n| n.path_through_box(o.center, o.half + DVec2::splat(RADIUS), DVec2::new(c, -s), DVec2::new(s, c), z + f.lift, PATH_REACH, next, GATE_REACH))
                 })
                 .collect();
             boxes.extend(vehicle_boxes(next, 20.0, cx.player.player.as_ref(), cx.player.placed, cx.traffic.traffic.as_ref(), cx.net));
