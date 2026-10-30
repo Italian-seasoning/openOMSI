@@ -1,6 +1,7 @@
 name: Content protection
 
 on:
+  workflow_dispatch:
   push:
     branches: [feat/content-protection]
   pull_request:
@@ -32,5 +33,7 @@ jobs:
           key: content-protection-${{ matrix.os }}
       - name: Format inputs
         run: cargo metadata --no-deps --format-version 1
+      - name: Publisher pack contract
+        run: cargo test -p omsi-pack --test pack
       - name: Native format and loader tests
-        run: cargo test --locked -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
+        run: cargo test -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
