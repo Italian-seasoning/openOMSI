@@ -867,7 +867,7 @@ mod tests {
         std::fs::write(&zip, bytes).unwrap();
         add_content_zip(&zip).unwrap();
         assert!(read_bounded(&zip.join("maps/Test/dependencies.json"), 1024 * 1024).is_err());
-        remove_content_root(&zip);
+        crate::remove_content_root(&zip);
         MOUNTS.write().unwrap().retain(|m| m.path != zip);
         std::fs::remove_dir_all(dir).unwrap();
     }
