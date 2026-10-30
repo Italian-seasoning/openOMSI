@@ -8,7 +8,6 @@ use omsi_pack::{
     create_pack, forget_unlock, random_content_key, AssetInput, Dependency, PackMetadata,
     SigningKey, SystemKeyStore, TrustedPublishers,
 };
-use ring::rand::SystemRandom;
 use sha2::Digest;
 
 fn hash(bytes: &[u8]) -> String {

@@ -132,7 +132,7 @@ fn read_private_file(path: &Path, max: usize) -> io::Result<Vec<u8>> {
             ));
         }
     }
-    let mut file = File::open(path)?;
+    let file = File::open(path)?;
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
     file.take(max as u64 + 1).read_to_end(&mut bytes)?;
     if bytes.len() > max {

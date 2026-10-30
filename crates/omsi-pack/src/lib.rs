@@ -244,7 +244,13 @@ impl TrustedPublishers {
     }
 
     pub fn load_file(path: &Path) -> Result<Self> {
-        let bytes = read_bounded_file(path, TRUST_LIMIT)?;
+        if fs::symlink_metadata(path)?.file_type().is_symlink() {
+            return Err(PackError::Invalid(
+                "publisher trust file must not be a symbolic link",
+            ));
+        }
+        let resolved = path.canonicalize()?;
+        let bytes = read_bounded_file(&resolved, TRUST_LIMIT)?;
         Self::load_json(&bytes)
     }
 
