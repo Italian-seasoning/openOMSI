@@ -72,6 +72,38 @@ fn metadata(key_id: Option<String>) -> PackMetadata {
     }
 }
 
+fn make_pack(
+    root: &std::path::Path,
+    name: &str,
+    key: &[u8; 32],
+    bytes: &[u8],
+) -> (std::path::PathBuf, SigningKey, TrustedPublishers) {
+    let path = root.join(name);
+    let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
+    let mut trust = TrustedPublishers::default();
+    trust.insert(
+        "owned-fixture-publisher",
+        signer.key_id(),
+        signer.public_key(),
+    );
+    let hash = hash(b"owned original source bytes");
+    create_pack(
+        &path,
+        metadata(Some(hash(key))),
+        &[AssetInput {
+            id: "asset-1".into(),
+            path: "Sceneryobjects/Pack/model/mesh.x".into(),
+            source_sha256: hash,
+            bytes: bytes.to_vec(),
+        }],
+        &signer,
+        Some(key),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    (path, signer, trust)
+}
+
 #[test]
 fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
     let root = scratch();
@@ -246,4 +278,170 @@ fn native_protected_store_survives_a_new_store_handle_and_deletes_only_its_fixtu
     assert_eq!(restarted.load(&scope).unwrap(), payload);
     restarted.delete(&scope).unwrap();
     assert!(restarted.load(&scope).is_err());
+}
+
+#[test]
+fn chunked_and_empty_assets_round_trip_with_distinct_nonces() {
+    let root = scratch();
+    std::fs::create_dir_all(&root).unwrap();
+    let out = root.join("multi.oopp");
+    let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
+    let mut trust = TrustedPublishers::default();
+    trust.insert(
+        "owned-fixture-publisher",
+        signer.key_id(),
+        signer.public_key(),
+    );
+    let key = [0x45; 32];
+    let large = vec![0x6a; 65 * 1024];
+    let manifest = create_pack(
+        &out,
+        metadata(Some(hash(&key))),
+        &[
+            AssetInput {
+                id: "large".into(),
+                path: "maps/Test/large.map".into(),
+                source_sha256: hash(b"source large"),
+                bytes: large.clone(),
+            },
+            AssetInput {
+                id: "empty".into(),
+                path: "maps/Test/empty.cfg".into(),
+                source_sha256: hash(b"source empty"),
+                bytes: Vec::new(),
+            },
+        ],
+        &signer,
+        Some(&key),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(manifest.assets[0].chunks.len(), 2);
+    assert_eq!(manifest.assets[1].chunks.len(), 1);
+    let nonces: std::collections::BTreeSet<Vec<u8>> = manifest
+        .assets
+        .iter()
+        .flat_map(|a| &a.chunks)
+        .map(|c| std::fs::read(out.join(&c.file)).unwrap()[..12].to_vec())
+        .collect();
+    assert_eq!(nonces.len(), 3);
+    let keys = MemoryKeys::default();
+    let expires = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+    let grant = issue_entitlement(&manifest, key, expires, &signer).unwrap();
+    unlock(&out, &grant, &trust, &keys).unwrap();
+    let pack = VerifiedPack::open_unlocked(&out, &trust, &keys).unwrap();
+    assert_eq!(pack.read("maps/Test/large.map").unwrap(), large);
+    assert_eq!(pack.read("maps/Test/empty.cfg").unwrap(), b"");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn file_directory_prefix_collision_is_rejected_before_output() {
+    let root = scratch();
+    std::fs::create_dir_all(&root).unwrap();
+    let out = root.join("collision.oopp");
+    let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
+    let key = [0x2a; 32];
+    let mut meta = metadata(Some(hash(&key)));
+    assert!(create_pack(
+        &out,
+        meta,
+        &[
+            AssetInput {
+                id: "file".into(),
+                path: "Sceneryobjects/Pack/model".into(),
+                source_sha256: hash(b"a"),
+                bytes: b"a".to_vec()
+            },
+            AssetInput {
+                id: "child".into(),
+                path: "Sceneryobjects/Pack/model/mesh.x".into(),
+                source_sha256: hash(b"b"),
+                bytes: b"b".to_vec()
+            },
+        ],
+        &signer,
+        Some(&key),
+        &AtomicBool::new(false),
+    )
+    .is_err());
+    assert!(!out.exists());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn cancellation_truncation_reordering_and_storage_failure_fail_closed() {
+    let root = scratch();
+    std::fs::create_dir_all(&root).unwrap();
+    let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
+    let key = [0x37; 32];
+    let source = vec![0x8f; 65 * 1024];
+    let cancelled_path = root.join("cancelled.oopp");
+    let mut meta = metadata(Some(hash(&key)));
+    let cancelled = AtomicBool::new(true);
+    assert!(create_pack(
+        &cancelled_path,
+        meta.clone(),
+        &[AssetInput {
+            id: "asset".into(),
+            path: "maps/Test/asset.bin".into(),
+            source_sha256: hash(b"source"),
+            bytes: source.clone()
+        }],
+        &signer,
+        Some(&key),
+        &cancelled,
+    )
+    .is_err());
+    assert!(!cancelled_path.exists());
+
+    let (out, signer, trust) = make_pack(&root, "tampered.oopp", &key, &source);
+    let manifest = load_manifest(&out, &trust).unwrap();
+    let first = &manifest.assets[0].chunks[0].file;
+    let second = &manifest.assets[0].chunks[1].file;
+    let first_blob = std::fs::read(out.join(first)).unwrap();
+    let second_blob = std::fs::read(out.join(second)).unwrap();
+    std::fs::write(out.join(first), second_blob).unwrap();
+    std::fs::write(out.join(second), first_blob).unwrap();
+    let no_keys = MemoryKeys::default();
+    let expires = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+    let grant = issue_entitlement(&manifest, key, expires, &signer).unwrap();
+    unlock(&out, &grant, &trust, &no_keys).unwrap();
+    assert!(VerifiedPack::open_unlocked(&out, &trust, &no_keys).is_err());
+
+    let (truncated, signer, trust) = make_pack(&root, "truncated.oopp", &key, &source);
+    let manifest = load_manifest(&truncated, &trust).unwrap();
+    let first = truncated.join(&manifest.assets[0].chunks[0].file);
+    std::fs::write(&first, b"short").unwrap();
+    let grant = issue_entitlement(&manifest, key, expires, &signer).unwrap();
+    let failing_store = MemoryKeys(Mutex::new(BTreeMap::new()));
+    assert!(unlock(&truncated, &grant, &trust, &failing_store).is_ok());
+    assert!(VerifiedPack::open_unlocked(&truncated, &trust, &failing_store).is_err());
+
+    struct BrokenStore;
+    impl KeyStore for BrokenStore {
+        fn store(&self, _: &str, _: &[u8]) -> Result<()> {
+            Err(PackError::SecureStorage("fixture storage failure".into()))
+        }
+        fn load(&self, _: &str) -> Result<Vec<u8>> {
+            Err(PackError::KeyNotFound)
+        }
+        fn delete(&self, _: &str) -> Result<()> {
+            Err(PackError::KeyNotFound)
+        }
+    }
+    let (healthy, signer, trust) = make_pack(&root, "storage.oopp", &key, b"fixture");
+    let manifest = load_manifest(&healthy, &trust).unwrap();
+    let grant = issue_entitlement(&manifest, key, expires, &signer).unwrap();
+    assert!(unlock(&healthy, &grant, &trust, &BrokenStore).is_err());
+    assert!(VerifiedPack::open_unlocked(&healthy, &trust, &BrokenStore).is_err());
+    std::fs::remove_dir_all(root).unwrap();
 }
