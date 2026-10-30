@@ -50,6 +50,9 @@ jobs:
       - name: Native format and loader tests
         run: cargo test --locked -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
 
+      - name: World publisher asset contract
+        run: cargo test --locked -p omsi-scene publisher -- --nocapture
+
       - name: Architecture and size guards
         if: runner.os == 'macOS'
         run: |
