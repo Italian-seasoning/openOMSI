@@ -1,0 +1,36 @@
+name: Content protection
+
+on:
+  push:
+    branches: [feat/content-protection]
+  pull_request:
+    paths: ["crates/omsi-pack/**", "crates/omsi-cfg/**", "crates/omsi-scene/**", "Cargo.*", ".github/workflows/content-protection.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: content-protection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: 4
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: content-protection-${{ matrix.os }}
+      - name: Format inputs
+        run: cargo metadata --no-deps --format-version 1
+      - name: Native format and loader tests
+        run: cargo test --locked -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
