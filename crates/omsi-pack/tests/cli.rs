@@ -143,5 +143,6 @@ fn command_line_issues_unlocks_and_reopens_a_signed_pack_in_a_new_process() {
     );
     assert!(String::from_utf8_lossy(&after_restart.stdout).contains("owned-cli-pack"));
     assert!(!String::from_utf8_lossy(&after_restart.stdout).contains("content_key"));
+    drop(_cleanup);
     std::fs::remove_dir_all(root).unwrap();
 }

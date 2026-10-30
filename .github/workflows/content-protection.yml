@@ -45,6 +45,10 @@ jobs:
       - name: Native format and loader tests
         run: cargo test -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
 
+      - name: Runtime type check
+        if: always()
+        run: cargo check --locked -p omsi-app
+
       - name: Resolved dependency lock
         if: always()
         uses: actions/upload-artifact@v7

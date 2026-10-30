@@ -300,6 +300,25 @@ pub fn load_manifest(pack: &Path, trusted: &TrustedPublishers) -> Result<Manifes
     Ok(manifest)
 }
 
+/// Load a manifest only when its detached publisher signature matches this publisher's signing
+/// key. This is used by the offline issuer and avoids treating a key supplied by the pack as
+/// trusted input.
+pub fn load_manifest_signed_by(pack: &Path, signer: &SigningKey) -> Result<Manifest> {
+    let bytes = read_bounded_file(&pack.join("manifest.json"), MANIFEST_LIMIT)?;
+    let manifest: Manifest = serde_json::from_slice(&bytes)?;
+    validate_identity(&manifest.publisher_id)?;
+    if manifest.signing_key_id != signer.key_id() {
+        return Err(PackError::UntrustedPublisher);
+    }
+    let mut trusted = TrustedPublishers::default();
+    trusted.insert(
+        manifest.publisher_id.clone(),
+        signer.key_id(),
+        signer.public_key(),
+    );
+    load_manifest(pack, &trusted)
+}
+
 /// Write a complete pack to a new directory. For each protected pack the publisher must pass
 /// one fresh key from [`random_content_key`] and set `metadata.key_id` to its SHA-256. Never
 /// reuse that key on a later pack. Encrypted files use unique random nonces and independently
@@ -802,6 +821,24 @@ pub fn unlock(
     let scope = entitlement_scope(&manifest, &entitlement.key_id)?;
     keys.store(&scope, bytes)?;
     Ok(manifest)
+}
+
+/// Remove the OS-protected entitlement for one signed pack revision. The scope includes the
+/// canonical manifest digest and content-key ID, so this cannot remove another pack's grant.
+pub fn forget_unlock(
+    pack_root: &Path,
+    trusted: &TrustedPublishers,
+    keys: &dyn KeyStore,
+) -> Result<()> {
+    let manifest = load_manifest(pack_root, trusted)?;
+    let Some(key_id) = manifest.key_id.as_deref() else {
+        return Ok(());
+    };
+    let scope = entitlement_scope(&manifest, key_id)?;
+    match keys.delete(&scope) {
+        Err(PackError::KeyNotFound) => Ok(()),
+        result => result,
+    }
 }
 
 fn verify_entitlement(

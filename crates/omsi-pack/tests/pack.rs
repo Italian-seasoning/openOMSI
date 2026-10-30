@@ -86,14 +86,14 @@ fn make_pack(
         signer.key_id(),
         signer.public_key(),
     );
-    let hash = hash(b"owned original source bytes");
+    let source_sha256 = hash(b"owned original source bytes");
     create_pack(
         &path,
         metadata(Some(hash(key))),
         &[AssetInput {
             id: "asset-1".into(),
             path: "Sceneryobjects/Pack/model/mesh.x".into(),
-            source_sha256: hash,
+            source_sha256,
             bytes: bytes.to_vec(),
         }],
         &signer,
@@ -348,7 +348,7 @@ fn file_directory_prefix_collision_is_rejected_before_output() {
     let out = root.join("collision.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let key = [0x2a; 32];
-    let mut meta = metadata(Some(hash(&key)));
+    let meta = metadata(Some(hash(&key)));
     assert!(create_pack(
         &out,
         meta,
@@ -383,11 +383,11 @@ fn cancellation_truncation_reordering_and_storage_failure_fail_closed() {
     let key = [0x37; 32];
     let source = vec![0x8f; 65 * 1024];
     let cancelled_path = root.join("cancelled.oopp");
-    let mut meta = metadata(Some(hash(&key)));
+    let meta = metadata(Some(hash(&key)));
     let cancelled = AtomicBool::new(true);
     assert!(create_pack(
         &cancelled_path,
-        meta.clone(),
+        meta,
         &[AssetInput {
             id: "asset".into(),
             path: "maps/Test/asset.bin".into(),

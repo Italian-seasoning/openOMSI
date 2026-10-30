@@ -36,7 +36,6 @@ pub mod transport;
 pub mod panic_guard;
 pub mod profile_keys;
 pub mod vfs;
-pub mod publisher;
 pub mod install_search;
 pub mod copied_install;
 mod walk;
@@ -849,6 +848,9 @@ pub fn read_dir_merged(rel: &str) -> Vec<PathBuf> {
 /// Windows finds it: see [`windows_components`] for the spelling rules, names compare without
 /// regard to case, and a mod's copy under a content root of higher priority comes first.
 pub fn resolve_path(base: &Path, rel: &str) -> PathBuf {
+    if let Some(path) = publisher::resolve_alias(base, rel) {
+        return path;
+    }
     let rel = windows_components(rel);
     let rel = rel.as_slice();
     // a mod's copy first: the same place under a content root of higher priority than the

@@ -4,7 +4,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+use unicode_normalization::UnicodeNormalization;
+
+static NEXT_DEPENDENCY_MOUNT: AtomicU64 = AtomicU64::new(1);
+static MAP_ALIASES: std::sync::RwLock<Vec<MapAliasScope>> = std::sync::RwLock::new(Vec::new());
+
+struct MapAliasScope {
+    id: u64,
+    map: PathBuf,
+    declarations: BTreeMap<String, String>,
+    aliases: BTreeMap<String, PathBuf>,
+    mounts: Vec<PathBuf>,
+    leases: usize,
+}
+
+const MAX_ALIAS_SCOPES: usize = 64;
+const MAX_ACTIVE_ALIASES: usize = 32768;
 
 fn invalid(message: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.to_string())
@@ -16,6 +35,33 @@ pub fn digest(bytes: &[u8]) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+fn map_scope_path(path: &Path) -> io::Result<PathBuf> {
+    if let Ok(path) = std::fs::canonicalize(path) {
+        return Ok(path);
+    }
+    let path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                clean.push(component.as_os_str())
+            }
+            std::path::Component::Normal(name) => clean.push(name),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !clean.pop() {
+                    return Err(invalid("map path escapes its root"));
+                }
+            }
+        }
+    }
+    Ok(clean)
 }
 
 pub fn bounded_read(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
@@ -157,9 +203,22 @@ impl Catalog {
     }
 
     pub fn recognize(&self, hash: &str) -> Option<&Provenance> {
+        self.recognize_restrictive(hash)
+    }
+
+    pub fn matches(&self, hash: &str) -> Vec<&Provenance> {
         self.entries
             .iter()
-            .find(|a| a.source_sha256 == hash || a.output_sha256 == hash)
+            .filter(|a| a.source_sha256 == hash || a.output_sha256 == hash)
+            .collect()
+    }
+
+    /// If publishers make conflicting claims for the same bytes, surface the most restrictive
+    /// claim first so ordinary export warns until a rights-holder explicitly overrides it.
+    pub fn recognize_restrictive(&self, hash: &str) -> Option<&Provenance> {
+        self.matches(hash)
+            .into_iter()
+            .min_by_key(|a| (!a.protected, a.redistribution))
     }
 }
 
@@ -209,6 +268,279 @@ fn installed(content: &Path, trust: &TrustedPublishers) -> io::Result<Vec<(PathB
     Ok(result)
 }
 
+type PackKey = (String, String, String);
+
+fn pack_key(d: &Dependency) -> PackKey {
+    (d.publisher_id.clone(), d.pack_id.clone(), d.version.clone())
+}
+
+fn trusted_installed(
+    content: &Path,
+    trust: &TrustedPublishers,
+) -> io::Result<Vec<(PathBuf, Manifest)>> {
+    let mut result = Vec::new();
+    for path in folders(&content.join("Packs"))? {
+        // Untrusted or incomplete packages are never mounted. A map naming one fails below
+        // as a missing dependency; unrelated legacy folders do not disable ordinary maps.
+        let Ok(manifest) = omsi_pack::load_manifest(&path, trust) else {
+            continue;
+        };
+        if result
+            .iter()
+            .any(|(_, m): &(PathBuf, Manifest)| dependency(m) == dependency(&manifest))
+        {
+            return Err(invalid("duplicate installed publisher pack identity"));
+        }
+        result.push((path, manifest));
+    }
+    Ok(result)
+}
+
+/// The map-scoped virtual roots installed during world open. Dropping the World removes
+/// these aliases so another map cannot inherit them.
+#[derive(Default)]
+pub struct DependencyMounts {
+    mounts: Vec<PathBuf>,
+    alias_scope: Option<u64>,
+}
+
+impl Drop for DependencyMounts {
+    fn drop(&mut self) {
+        if let Some(id) = self.alias_scope.take() {
+            let mut scopes = MAP_ALIASES.write().unwrap_or_else(|e| e.into_inner());
+            if let Some(index) = scopes.iter().position(|s| s.id == id) {
+                scopes[index].leases = scopes[index].leases.saturating_sub(1);
+                if scopes[index].leases == 0 {
+                    let scope = scopes.remove(index);
+                    drop(scopes);
+                    for root in scope.mounts.into_iter().rev() {
+                        crate::vfs::unmount_sealed(&root);
+                    }
+                }
+            }
+        } else {
+            for root in self.mounts.drain(..).rev() {
+                crate::vfs::unmount_sealed(&root);
+            }
+        }
+    }
+}
+
+fn path_key(path: &str) -> String {
+    path.nfkc().flat_map(char::to_lowercase).collect()
+}
+
+fn safe_game_path(path: &str) -> bool {
+    if path.is_empty()
+        || path.len() > 1024
+        || path.contains(['\\', ':', '\0'])
+        || path.starts_with('/')
+    {
+        return false;
+    }
+    path.split('/').all(|part| {
+        if part.is_empty()
+            || part == "."
+            || part == ".."
+            || part.ends_with(['.', ' '])
+            || part.chars().any(char::is_control)
+        {
+            return false;
+        }
+        let stem = part.split('.').next().unwrap_or("").to_ascii_uppercase();
+        !matches!(
+            stem.as_str(),
+            "CON"
+                | "PRN"
+                | "AUX"
+                | "NUL"
+                | "COM1"
+                | "COM2"
+                | "COM3"
+                | "COM4"
+                | "COM5"
+                | "COM6"
+                | "COM7"
+                | "COM8"
+                | "COM9"
+                | "LPT1"
+                | "LPT2"
+                | "LPT3"
+                | "LPT4"
+                | "LPT5"
+                | "LPT6"
+                | "LPT7"
+                | "LPT8"
+                | "LPT9"
+        )
+    })
+}
+
+fn checked_alias(alias: &str, canonical: &str) -> io::Result<()> {
+    if !safe_game_path(alias) || !safe_game_path(canonical) {
+        return Err(invalid("unsafe publisher asset path"));
+    }
+    let category = |p: &str| p.split('/').next().unwrap_or("").to_ascii_lowercase();
+    let extension = |p: &str| {
+        Path::new(p)
+            .extension()
+            .and_then(|x| x.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    };
+    let supported = [
+        "maps",
+        "sceneryobjects",
+        "splines",
+        "texture",
+        "vehicles",
+        "fonts",
+    ];
+    let formats = [
+        "cfg", "map", "terrain", "sco", "sli", "o3d", "x", "gltf", "glb", "fbx", "obj", "dds",
+        "bmp", "tga", "png", "jpg", "jpeg", "wav", "oft", "bin",
+    ];
+    if category(alias) != category(canonical)
+        || !supported.contains(&category(alias).as_str())
+        || extension(alias) != extension(canonical)
+        || !formats.contains(&extension(alias).as_str())
+    {
+        return Err(invalid(
+            "publisher aliases must keep a data file's folder and format",
+        ));
+    }
+    Ok(())
+}
+
+fn check_aliases(aliases: &[(String, String)]) -> io::Result<()> {
+    let mut seen = BTreeSet::new();
+    for (alias, canonical) in aliases {
+        checked_alias(alias, canonical)?;
+        let key = path_key(alias);
+        if !seen.insert(key.clone()) {
+            return Err(invalid("duplicate publisher dependency alias"));
+        }
+        for slash in key.match_indices('/') {
+            let prefix = &key[..slash.0];
+            if seen.contains(prefix) {
+                return Err(invalid("publisher aliases collide as a file and folder"));
+            }
+        }
+        if seen
+            .iter()
+            .any(|prior: &String| prior.starts_with(&(key.clone() + "/")))
+        {
+            return Err(invalid("publisher aliases collide as a file and folder"));
+        }
+    }
+    Ok(())
+}
+
+fn register_aliases(
+    map_dir: &Path,
+    declarations: BTreeMap<String, String>,
+    aliases: BTreeMap<String, PathBuf>,
+    mounts: &mut Vec<PathBuf>,
+) -> io::Result<(u64, bool)> {
+    if aliases.is_empty() {
+        return Ok((0, false));
+    }
+    let map = map_scope_path(map_dir)?;
+    let mut scopes = MAP_ALIASES.write().unwrap_or_else(|e| e.into_inner());
+    if let Some(existing) = scopes.iter_mut().find(|s| s.map == map) {
+        if existing.declarations != declarations {
+            return Err(invalid(
+                "the same map is already open with different publisher dependencies",
+            ));
+        }
+        existing.leases = existing
+            .leases
+            .checked_add(1)
+            .ok_or_else(|| invalid("publisher map scope limit reached"))?;
+        let id = existing.id;
+        drop(scopes);
+        for root in mounts.drain(..).rev() {
+            crate::vfs::unmount_sealed(&root);
+        }
+        return Ok((id, true));
+    }
+    let active: usize = scopes.iter().map(|s| s.aliases.len()).sum();
+    if scopes.len() >= MAX_ALIAS_SCOPES || active.saturating_add(aliases.len()) > MAX_ACTIVE_ALIASES
+    {
+        return Err(invalid("too many active publisher map aliases"));
+    }
+    let id = NEXT_DEPENDENCY_MOUNT.fetch_add(1, Ordering::Relaxed);
+    scopes.push(MapAliasScope {
+        id,
+        map,
+        declarations,
+        aliases,
+        mounts: std::mem::take(mounts),
+        leases: 1,
+    });
+    Ok((id, false))
+}
+
+/// Resolve a signed asset alias only for the map that declared it.
+pub(crate) fn resolve_alias(base: &Path, rel: &str) -> Option<PathBuf> {
+    let scopes = MAP_ALIASES.read().unwrap_or_else(|e| e.into_inner());
+    for scope in scopes.iter().rev() {
+        let Ok(suffix) = base.strip_prefix(&scope.map) else {
+            continue;
+        };
+        let mut parts: Vec<String> = suffix
+            .components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(p) => Some(p.to_string_lossy().into_owned()),
+                _ => None,
+            })
+            .collect();
+        for part in rel.split(['\\', '/']) {
+            match part {
+                "" | "." => {}
+                ".." if !parts.is_empty() => {
+                    parts.pop();
+                }
+                ".." => return None,
+                p if p.starts_with('/') || p.contains(':') => return None,
+                p => parts.push(p.to_string()),
+            }
+        }
+        if let Some(path) = scope.aliases.get(&path_key(&parts.join("/"))) {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+fn dependency_closure(
+    required: &Dependency,
+    available: &BTreeMap<PackKey, (PathBuf, Manifest)>,
+    visiting: &mut BTreeSet<PackKey>,
+    selected: &mut BTreeSet<PackKey>,
+    depth: usize,
+) -> io::Result<()> {
+    let key = pack_key(required);
+    if selected.contains(&key) {
+        return Ok(());
+    }
+    if depth > 128 || !visiting.insert(key.clone()) {
+        return Err(invalid("publisher dependency cycle or depth limit"));
+    }
+    let (_, manifest) = available.get(&key).ok_or_else(|| {
+        invalid(format!(
+            "missing or wrong-version publisher dependency {}/{}/{}",
+            required.publisher_id, required.pack_id, required.version
+        ))
+    })?;
+    for dependency in &manifest.dependencies {
+        dependency_closure(dependency, available, visiting, selected, depth + 1)?;
+    }
+    visiting.remove(&key);
+    selected.insert(key);
+    Ok(())
+}
+
 /// Verify every asset before making a publisher pack visible to parsers and decoders.
 pub fn mount_packs(content: &Path) -> io::Result<Vec<PathBuf>> {
     let trust = trust(content)?;
@@ -238,35 +570,50 @@ pub fn mount_packs(content: &Path) -> io::Result<Vec<PathBuf>> {
 }
 
 /// Called at the common world-loader boundary; ordinary maps require no new metadata.
-pub fn validate_map(map_dir: &Path) -> io::Result<()> {
+pub fn validate_map(map_dir: &Path) -> io::Result<DependencyMounts> {
     let file = map_dir.join("dependencies.json");
     if !crate::vfs::is_file(&file) {
-        return Ok(());
+        return Ok(DependencyMounts::default());
     }
-    if crate::vfs::file_size(&file).is_none_or(|n| n > 1024 * 1024) {
-        return Err(invalid("map dependency manifest exceeds its limit"));
-    }
-    let refs: MapReferences = serde_json::from_slice(&crate::vfs::read(&file)?).map_err(invalid)?;
+    let bytes = crate::vfs::read_bounded(&file, 1024 * 1024)?;
+    let refs: MapReferences = serde_json::from_slice(&bytes).map_err(invalid)?;
     if refs.format_version != 1 || refs.dependencies.len() > 128 || refs.assets.len() > 4096 {
         return Err(invalid("unsupported or oversized map dependency manifest"));
     }
-    let mut packs = Vec::new();
+    let mut roots = Vec::new();
+    let mut available = BTreeMap::new();
     for root in crate::content_roots()
         .into_iter()
         .filter(|r| r.join("Publishers.json").is_file())
     {
         let trusted = trust(&root)?;
-        for (path, manifest) in installed(&root, &trusted)? {
-            if refs
-                .dependencies
-                .iter()
-                .any(|d| same(d, &dependency(&manifest)))
-            {
-                let pack = VerifiedPack::open_unlocked(&path, &trusted, &omsi_pack::SystemKeyStore)
-                    .map_err(invalid)?;
-                packs.push((path, Arc::new(pack)));
+        for (path, manifest) in trusted_installed(&root, &trusted)? {
+            let key = pack_key(&dependency(&manifest));
+            if available.insert(key, (path, manifest)).is_some() {
+                return Err(invalid(
+                    "publisher dependency is duplicated across content roots",
+                ));
             }
         }
+        roots.push((root, trusted));
+    }
+    let mut selected = BTreeSet::new();
+    for required in &refs.dependencies {
+        dependency_closure(required, &available, &mut BTreeSet::new(), &mut selected, 0)?;
+    }
+    let mut packs = Vec::new();
+    for key in &selected {
+        let (path, manifest) = available
+            .get(key)
+            .ok_or_else(|| invalid("publisher dependency disappeared"))?;
+        let trusted = roots
+            .iter()
+            .find(|(root, _)| path.starts_with(root))
+            .map(|(_, trust)| trust)
+            .ok_or_else(|| invalid("publisher trust root disappeared"))?;
+        let pack = VerifiedPack::open_unlocked(path, trusted, &omsi_pack::SystemKeyStore)
+            .map_err(invalid)?;
+        packs.push((path.clone(), Arc::new(pack)));
     }
     for required in &refs.dependencies {
         if !packs
@@ -279,9 +626,11 @@ pub fn validate_map(map_dir: &Path) -> io::Result<()> {
             )));
         }
     }
+    let mut aliases = Vec::new();
+    let mut declarations = BTreeMap::new();
     let mut seen = BTreeSet::new();
     for reference in &refs.assets {
-        if !seen.insert(reference.path.to_lowercase()) {
+        if !seen.insert(path_key(&reference.path)) {
             return Err(invalid("duplicate dependency alias"));
         }
         if !refs
@@ -291,27 +640,108 @@ pub fn validate_map(map_dir: &Path) -> io::Result<()> {
         {
             return Err(invalid("asset names an undeclared dependency"));
         }
+        let pack = packs
+            .iter()
+            .find(|(_, p)| same(&reference.dependency, &dependency(p.manifest())))
+            .map(|(_, p)| p)
+            .ok_or_else(|| invalid("asset dependency is not in the verified closure"))?;
+        let asset = pack
+            .assets()
+            .iter()
+            .find(|a| a.id == reference.asset_id)
+            .ok_or_else(|| invalid("dependency asset identity was not found"))?;
+        checked_alias(&reference.path, &asset.path)?;
+        aliases.push((reference.path.clone(), asset.path.clone()));
+        let dep = pack_key(&reference.dependency);
+        let signed_manifest = serde_json::to_vec(pack.manifest()).map_err(invalid)?;
+        declarations.insert(
+            reference.path.clone(),
+            format!(
+                "{}\0{}\0{}\0{}\0{}",
+                dep.0,
+                dep.1,
+                dep.2,
+                digest(&signed_manifest),
+                asset.path
+            ),
+        );
     }
-    // A separate virtual root keeps aliases out of the map's editable files.
+    check_aliases(&aliases)?;
+    let mut roots_added = BTreeMap::new();
+    let mut virtual_mounts = Vec::new();
     for (index, (_, pack)) in packs.into_iter().enumerate() {
-        let mut aliases = BTreeMap::new();
+        let pack_aliases = refs
+            .assets
+            .iter()
+            .filter(|r| same(&r.dependency, &dependency(pack.manifest())))
+            .map(|r| {
+                (
+                    r.path.clone(),
+                    pack.assets()
+                        .iter()
+                        .find(|a| a.id == r.asset_id)
+                        .unwrap()
+                        .path
+                        .clone(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        if pack_aliases.is_empty() {
+            continue;
+        }
+        let id = NEXT_DEPENDENCY_MOUNT.fetch_add(1, Ordering::Relaxed);
+        let mount = map_dir.join(format!(
+            ".publisher-world/{}/{id}-{index}",
+            std::process::id()
+        ));
+        if let Err(error) = crate::vfs::mount_publisher(&mount, pack.clone(), pack_aliases) {
+            for root in virtual_mounts.drain(..).rev() {
+                crate::vfs::unmount_sealed(&root);
+            }
+            return Err(error);
+        }
         for reference in refs
             .assets
             .iter()
             .filter(|r| same(&r.dependency, &dependency(pack.manifest())))
         {
-            let asset = pack
+            let canonical = pack
                 .assets()
                 .iter()
                 .find(|a| a.id == reference.asset_id)
-                .ok_or_else(|| invalid("dependency asset identity was not found"))?;
-            aliases.insert(reference.path.clone(), asset.path.clone());
+                .unwrap()
+                .path
+                .as_str();
+            if roots_added
+                .insert(reference.path.clone(), mount.join(canonical))
+                .is_some()
+            {
+                for root in virtual_mounts.drain(..).rev() {
+                    crate::vfs::unmount_sealed(&root);
+                }
+                crate::vfs::unmount_sealed(&mount);
+                return Err(invalid("duplicate publisher alias across dependencies"));
+            }
         }
-        if !aliases.is_empty() {
-            let mount = map_dir.join(format!(".publisher-dependencies/{index}"));
-            crate::vfs::mount_publisher(&mount, pack, aliases)?;
-            crate::add_content_root_first(mount);
+        virtual_mounts.push(mount);
+    }
+    let (alias_scope, shared_scope) =
+        match register_aliases(map_dir, declarations, roots_added, &mut virtual_mounts) {
+            Ok(id) => id,
+            Err(error) => {
+                for root in virtual_mounts.drain(..).rev() {
+                    crate::vfs::unmount_sealed(&root);
+                }
+                return Err(error);
+            }
+        };
+    if shared_scope {
+        for root in virtual_mounts.drain(..).rev() {
+            crate::vfs::unmount_sealed(&root);
         }
     }
-    Ok(())
+    Ok(DependencyMounts {
+        mounts: virtual_mounts,
+        alias_scope: (alias_scope != 0).then_some(alias_scope),
+    })
 }
