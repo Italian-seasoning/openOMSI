@@ -19,7 +19,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-use zeroize::Zeroize;
+use unicode_normalization::UnicodeNormalization;
+use zeroize::{Zeroize, Zeroizing};
 
 const FORMAT_VERSION: u32 = 1;
 const MANIFEST_LIMIT: usize = 1024 * 1024;
@@ -163,6 +164,12 @@ pub struct SigningKey {
     pkcs8: Vec<u8>,
 }
 
+impl Drop for SigningKey {
+    fn drop(&mut self) {
+        self.pkcs8.zeroize();
+    }
+}
+
 impl std::fmt::Debug for SigningKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("SigningKey(..)")
@@ -272,10 +279,7 @@ pub fn random_content_key() -> Result<[u8; 32]> {
 /// Read and verify the signed manifest without opening any asset chunks. This is also used
 /// for cached provenance snapshots, which remain useful after the original pack is removed.
 pub fn load_manifest(pack: &Path, trusted: &TrustedPublishers) -> Result<Manifest> {
-    let root = pack.canonicalize()?;
-    if !root.is_dir() {
-        return Err(PackError::Invalid("pack root is not a directory"));
-    }
+    let root = canonical_pack_root(pack)?;
     let bytes = read_bounded_file(&root.join("manifest.json"), MANIFEST_LIMIT)?;
     let signature = read_bounded_file(&root.join("manifest.sig"), 64)?;
     if signature.len() != 64 {
@@ -304,7 +308,8 @@ pub fn load_manifest(pack: &Path, trusted: &TrustedPublishers) -> Result<Manifes
 /// key. This is used by the offline issuer and avoids treating a key supplied by the pack as
 /// trusted input.
 pub fn load_manifest_signed_by(pack: &Path, signer: &SigningKey) -> Result<Manifest> {
-    let bytes = read_bounded_file(&pack.join("manifest.json"), MANIFEST_LIMIT)?;
+    let root = canonical_pack_root(pack)?;
+    let bytes = read_bounded_file(&root.join("manifest.json"), MANIFEST_LIMIT)?;
     let manifest: Manifest = serde_json::from_slice(&bytes)?;
     validate_identity(&manifest.publisher_id)?;
     if manifest.signing_key_id != signer.key_id() {
@@ -316,13 +321,25 @@ pub fn load_manifest_signed_by(pack: &Path, signer: &SigningKey) -> Result<Manif
         signer.key_id(),
         signer.public_key(),
     );
-    load_manifest(pack, &trusted)
+    load_manifest(&root, &trusted)
+}
+
+fn canonical_pack_root(pack: &Path) -> Result<PathBuf> {
+    let metadata = fs::symlink_metadata(pack)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(PackError::Invalid(
+            "pack root must be a regular directory, not a symbolic link",
+        ));
+    }
+    Ok(pack.canonicalize()?)
 }
 
 /// Write a complete pack to a new directory. For each protected pack the publisher must pass
 /// one fresh key from [`random_content_key`] and set `metadata.key_id` to its SHA-256. Never
 /// reuse that key on a later pack. Encrypted files use unique random nonces and independently
-/// authenticated chunks no larger than 64 KiB. The destination must not already exist.
+/// authenticated chunks no larger than 64 KiB. A private sibling staging directory is
+/// published with an atomic no-replace rename only after the signed manifest is complete. The
+/// destination must not already exist.
 pub fn create_pack(
     destination: &Path,
     metadata: PackMetadata,
@@ -359,11 +376,11 @@ pub fn create_pack(
     let mut assets = Vec::with_capacity(inputs.len());
     for input in inputs {
         validate_identity(&input.id)?;
-        validate_game_path(&input.path)?;
+        let normalized_path = canonical_game_path(&input.path)?;
         if !ids.insert(input.id.clone()) {
             return Err(PackError::Invalid("duplicate asset identity"));
         }
-        if !paths.insert(input.path.to_lowercase()) {
+        if !paths.insert(normalized_path) {
             return Err(PackError::Invalid("duplicate or case-colliding asset path"));
         }
         if !is_sha256(&input.source_sha256) {
@@ -389,6 +406,7 @@ pub fn create_pack(
             chunks: Vec::new(),
         });
     }
+    validate_file_path_prefixes(&paths)?;
     let mut manifest = Manifest {
         format_version: FORMAT_VERSION,
         publisher_id: metadata.publisher_id,
@@ -408,9 +426,7 @@ pub fn create_pack(
     if !parent.is_dir() {
         return Err(PackError::Invalid("destination parent does not exist"));
     }
-    fs::create_dir(destination)?;
-    let mut written = Vec::<PathBuf>::new();
-    let mut created_dirs = vec![destination.to_path_buf()];
+    let staging = create_pack_staging_dir(parent)?;
     let result = (|| {
         let cipher = match content_key {
             Some(k) => Some(LessSafeKey::new(
@@ -456,7 +472,7 @@ pub fn create_pack(
                     let mut blob = nonce_bytes.to_vec();
                     blob.append(&mut body);
                     let file = format!("assets/{opaque}/{index:08}.bin");
-                    write_pack_file(destination, &file, &blob, &mut written, &mut created_dirs)?;
+                    write_pack_file(&staging, &file, &blob)?;
                     asset.chunks.push(Chunk {
                         file,
                         plaintext_size: chunk.len() as u32,
@@ -477,7 +493,7 @@ pub fn create_pack(
                     let mut blob = nonce_bytes.to_vec();
                     blob.append(&mut body);
                     let file = format!("assets/{opaque}/00000000.bin");
-                    write_pack_file(destination, &file, &blob, &mut written, &mut created_dirs)?;
+                    write_pack_file(&staging, &file, &blob)?;
                     asset.chunks.push(Chunk {
                         file,
                         plaintext_size: 0,
@@ -486,13 +502,7 @@ pub fn create_pack(
                 }
             } else {
                 let file = format!("assets/{opaque}/plain.bin");
-                write_pack_file(
-                    destination,
-                    &file,
-                    &input.bytes,
-                    &mut written,
-                    &mut created_dirs,
-                )?;
+                write_pack_file(&staging, &file, &input.bytes)?;
             }
         }
         validate_manifest(&manifest)?;
@@ -501,29 +511,16 @@ pub fn create_pack(
             return Err(PackError::Invalid("signed manifest exceeds 1 MiB"));
         }
         let signature = signer.pair.sign(&bytes);
-        write_pack_file(
-            destination,
-            "manifest.sig",
-            signature.as_ref(),
-            &mut written,
-            &mut created_dirs,
-        )?;
-        write_pack_file(
-            destination,
-            "manifest.json",
-            &bytes,
-            &mut written,
-            &mut created_dirs,
-        )?;
+        write_pack_file(&staging, "manifest.sig", signature.as_ref())?;
+        write_pack_file(&staging, "manifest.json", &bytes)?;
         Ok(())
     })();
     if let Err(error) = result {
-        for path in written.iter().rev() {
-            let _ = fs::remove_file(path);
-        }
-        for dir in created_dirs.iter().rev() {
-            let _ = fs::remove_dir(dir);
-        }
+        let _ = fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    if let Err(error) = publish_pack_no_replace(&staging, destination) {
+        let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
     Ok(manifest)
@@ -549,19 +546,20 @@ impl VerifiedPack {
         trusted: &TrustedPublishers,
         content_key: Option<[u8; 32]>,
     ) -> Result<Self> {
+        let content_key = content_key.map(Zeroizing::new);
         let manifest = load_manifest(root, trusted)?;
         if manifest.key_id.is_some() != content_key.is_some() {
             return Err(PackError::MissingKey);
         }
         if let (Some(id), Some(key)) = (&manifest.key_id, &content_key) {
-            if id != &sha256_hex(key) {
+            if id != &sha256_hex(&**key) {
                 return Err(PackError::WrongKey);
             }
         }
         let pack = Self {
             root: root.canonicalize()?,
             manifest,
-            content_key,
+            content_key: content_key.as_ref().map(|key| **key),
         };
         pack.verify_all()?;
         Ok(pack)
@@ -590,12 +588,12 @@ impl VerifiedPack {
         let verified = verify_entitlement(&manifest, &bytes, trusted);
         bytes.zeroize();
         let entitlement = verified?;
-        let content_key = entitlement.content_key;
+        let content_key = Zeroizing::new(entitlement.content_key);
         drop(entitlement);
         let pack = Self {
             root: root.canonicalize()?,
             manifest,
-            content_key: Some(content_key),
+            content_key: Some(*content_key),
         };
         pack.verify_all()?;
         Ok(pack)
@@ -756,7 +754,8 @@ pub fn issue_entitlement(
     expires_unix: u64,
     signer: &SigningKey,
 ) -> Result<Vec<u8>> {
-    if manifest.key_id.as_deref() != Some(sha256_hex(&content_key).as_str())
+    let content_key = Zeroizing::new(content_key);
+    if manifest.key_id.as_deref() != Some(sha256_hex(&*content_key).as_str())
         || signer.key_id() != manifest.signing_key_id
         || expires_unix <= now_unix()?
     {
@@ -773,12 +772,14 @@ pub fn issue_entitlement(
         manifest_sha256: sha256_hex(&serde_json::to_vec(manifest)?),
         key_id: manifest.key_id.clone().unwrap(),
         expires_unix,
-        content_key,
+        content_key: *content_key,
     };
-    let bytes = serde_json::to_vec(&entitlement)?;
+    let mut bytes = serde_json::to_vec(&entitlement)?;
+    let signature = signer.pair.sign(&bytes).as_ref().to_vec();
+    bytes.zeroize();
     let signed = SignedEntitlement {
         entitlement,
-        signature: signer.pair.sign(&bytes).as_ref().to_vec(),
+        signature,
     };
     Ok(serde_json::to_vec(&signed)?)
 }
@@ -953,10 +954,10 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
     let mut total = 0u64;
     for a in &m.assets {
         validate_identity(&a.id)?;
-        validate_game_path(&a.path)?;
+        let normalized_path = canonical_game_path(&a.path)?;
         validate_sha_field(&a.source_sha256)?;
         validate_sha_field(&a.output_sha256)?;
-        if !ids.insert(&a.id) || !paths.insert(a.path.to_lowercase()) {
+        if !ids.insert(&a.id) || !paths.insert(normalized_path) {
             return Err(PackError::Invalid(
                 "duplicate asset identity or case-colliding path",
             ));
@@ -1009,6 +1010,7 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
             }
         }
     }
+    validate_file_path_prefixes(&paths)?;
     Ok(())
 }
 
@@ -1064,6 +1066,83 @@ fn validate_game_path(path: &str) -> Result<()> {
             return Err(PackError::Invalid(
                 "asset path uses a reserved Windows name",
             ));
+        }
+    }
+    Ok(())
+}
+
+fn canonical_game_path(path: &str) -> Result<String> {
+    validate_game_path(path)?;
+    let mut normalized = Vec::new();
+    for component in path.split('/') {
+        let mut folded = String::new();
+        for character in component.nfkc() {
+            match character {
+                'ß' | 'ẞ' => folded.push_str("ss"),
+                'ς' => folded.push('σ'),
+                _ => folded.extend(character.to_lowercase()),
+            }
+        }
+        if folded.is_empty()
+            || folded == "."
+            || folded == ".."
+            || folded.ends_with([' ', '.'])
+            || folded.contains(['/', '\\', ':'])
+            || folded.chars().any(char::is_control)
+        {
+            return Err(PackError::Invalid(
+                "asset path becomes unsafe after Unicode normalization",
+            ));
+        }
+        let device = folded.split('.').next().unwrap_or("");
+        if matches!(
+            device,
+            "con"
+                | "prn"
+                | "aux"
+                | "nul"
+                | "com1"
+                | "com2"
+                | "com3"
+                | "com4"
+                | "com5"
+                | "com6"
+                | "com7"
+                | "com8"
+                | "com9"
+                | "lpt1"
+                | "lpt2"
+                | "lpt3"
+                | "lpt4"
+                | "lpt5"
+                | "lpt6"
+                | "lpt7"
+                | "lpt8"
+                | "lpt9"
+        ) {
+            return Err(PackError::Invalid(
+                "asset path uses a reserved Windows name",
+            ));
+        }
+        normalized.push(folded);
+    }
+    Ok(normalized.join("/"))
+}
+
+fn validate_file_path_prefixes(paths: &BTreeSet<String>) -> Result<()> {
+    for path in paths {
+        let mut prefix = String::new();
+        let mut parts = path.split('/').peekable();
+        while let Some(part) = parts.next() {
+            if !prefix.is_empty() {
+                prefix.push('/');
+            }
+            prefix.push_str(part);
+            if parts.peek().is_some() && paths.contains(&prefix) {
+                return Err(PackError::Invalid(
+                    "an asset file path is also used as a directory",
+                ));
+            }
         }
     }
     Ok(())
@@ -1171,13 +1250,7 @@ fn ensure_regular_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn write_pack_file(
-    root: &Path,
-    relative: &str,
-    bytes: &[u8],
-    written: &mut Vec<PathBuf>,
-    created_dirs: &mut Vec<PathBuf>,
-) -> Result<()> {
+fn write_pack_file(root: &Path, relative: &str, bytes: &[u8]) -> Result<()> {
     if relative
         .split('/')
         .any(|part| part.is_empty() || part == "." || part == "..")
@@ -1197,7 +1270,6 @@ fn write_pack_file(
             dir.push(part);
             if !dir.exists() {
                 fs::create_dir(&dir)?;
-                created_dirs.push(dir.clone());
             } else if fs::symlink_metadata(&dir)?.file_type().is_symlink() || !dir.is_dir() {
                 return Err(PackError::Invalid("generated pack directory is unsafe"));
             }
@@ -1207,37 +1279,179 @@ fn write_pack_file(
         .write(true)
         .create_new(true)
         .open(&path)?;
-    written.push(path);
     file.write_all(bytes)?;
     file.flush()?;
     Ok(())
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    if path.exists() {
-        return Err(PackError::Invalid("trust file already exists"));
+    write_atomic_after_check(path, bytes, || {})
+}
+
+fn write_atomic_after_check(
+    path: &Path,
+    bytes: &[u8],
+    before_publish: impl FnOnce(),
+) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {
+            return Err(
+                io::Error::new(io::ErrorKind::AlreadyExists, "output already exists").into(),
+            )
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
     let parent = path
         .parent()
         .ok_or(PackError::Invalid("trust file needs a parent"))?;
-    let tmp = parent.join(format!(".omsi-trust-{}.tmp", std::process::id()));
-    let mut opts = OpenOptions::new();
-    opts.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut f = opts.open(&tmp)?;
+    let (tmp, mut f) = create_private_temp(parent, ".omsi-trust")?;
     if let Err(e) = f.write_all(bytes).and_then(|_| f.sync_all()) {
         let _ = fs::remove_file(&tmp);
         return Err(e.into());
     }
-    if let Err(e) = fs::rename(&tmp, path) {
+    before_publish();
+    if let Err(e) = fs::hard_link(&tmp, path) {
         let _ = fs::remove_file(&tmp);
         return Err(e.into());
     }
+    fs::remove_file(&tmp)?;
     Ok(())
+}
+
+fn create_private_temp(parent: &Path, prefix: &str) -> Result<(PathBuf, File)> {
+    for _ in 0..8 {
+        let mut nonce = [0; 16];
+        SystemRandom::new()
+            .fill(&mut nonce)
+            .map_err(|_| PackError::Invalid("operating system random source failed"))?;
+        let path = parent.join(format!("{prefix}-{}.tmp", hex_digest(&nonce)));
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(&path) {
+            Ok(file) => return Ok((path, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not reserve a unique temporary file",
+    )
+    .into())
+}
+
+fn create_pack_staging_dir(parent: &Path) -> Result<PathBuf> {
+    for _ in 0..8 {
+        let mut nonce = [0; 16];
+        SystemRandom::new()
+            .fill(&mut nonce)
+            .map_err(|_| PackError::Invalid("operating system random source failed"))?;
+        let staging = parent.join(format!(".omsi-pack-stage-{}.tmp", hex_digest(&nonce)));
+        match fs::create_dir(&staging) {
+            Ok(()) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Err(error) =
+                        fs::set_permissions(&staging, fs::Permissions::from_mode(0o700))
+                    {
+                        let _ = fs::remove_dir(&staging);
+                        return Err(error.into());
+                    }
+                }
+                return Ok(staging);
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        "could not reserve a unique staging directory",
+    )
+    .into())
+}
+
+fn publish_pack_no_replace(staging: &Path, destination: &Path) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        unsafe extern "C" {
+            fn renameatx_np(
+                fromfd: libc::c_int,
+                from: *const libc::c_char,
+                tofd: libc::c_int,
+                to: *const libc::c_char,
+                flags: libc::c_uint,
+            ) -> libc::c_int;
+        }
+        let from = CString::new(staging.as_os_str().as_bytes())
+            .map_err(|_| PackError::Invalid("staging path contains a NUL byte"))?;
+        let to = CString::new(destination.as_os_str().as_bytes())
+            .map_err(|_| PackError::Invalid("destination path contains a NUL byte"))?;
+        let result = unsafe { renameatx_np(-2, from.as_ptr(), -2, to.as_ptr(), 0x0000_0004) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error().into())
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        let from = CString::new(staging.as_os_str().as_bytes())
+            .map_err(|_| PackError::Invalid("staging path contains a NUL byte"))?;
+        let to = CString::new(destination.as_os_str().as_bytes())
+            .map_err(|_| PackError::Invalid("destination path contains a NUL byte"))?;
+        let result = unsafe {
+            libc::syscall(
+                libc::SYS_renameat2,
+                libc::AT_FDCWD,
+                from.as_ptr(),
+                libc::AT_FDCWD,
+                to.as_ptr(),
+                1u32,
+            )
+        };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error().into())
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::{
+            core::PCWSTR,
+            Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH},
+        };
+        let from: Vec<u16> = staging.as_os_str().encode_wide().chain([0]).collect();
+        let to: Vec<u16> = destination.as_os_str().encode_wide().chain([0]).collect();
+        unsafe {
+            MoveFileExW(
+                PCWSTR(from.as_ptr()),
+                PCWSTR(to.as_ptr()),
+                MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(|error| PackError::Io(io::Error::other(error.to_string())))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
+    {
+        let _ = (staging, destination);
+        Err(PackError::Invalid(
+            "atomic no-replace pack publication is unsupported on this platform",
+        ))
+    }
 }
 
 fn now_unix() -> Result<u64> {
@@ -1346,17 +1560,38 @@ fn native_load(scope: &str) -> Result<Vec<u8>> {
             "DPAPI could not unlock this key for the current Windows user".into(),
         )
     })?;
-    let result =
-        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
+    let length = output.cbData as usize;
+    if output.pbData.is_null() {
+        return Err(PackError::Invalid("DPAPI returned an empty entitlement"));
+    }
+    if length == 0 {
+        unsafe {
+            let _ = LocalFree(Some(HLOCAL(output.pbData as *mut c_void)));
+        }
+        return Err(PackError::Invalid("DPAPI returned an empty entitlement"));
+    }
+    let mut result = unsafe {
+        let decrypted = std::slice::from_raw_parts_mut(output.pbData, length);
+        let copy = if length <= ENTITLEMENT_LIMIT {
+            Some(decrypted.to_vec())
+        } else {
+            None
+        };
+        decrypted.zeroize();
+        copy
+    };
     unsafe {
         let _ = LocalFree(Some(HLOCAL(output.pbData as *mut c_void)));
     }
-    if result.len() > ENTITLEMENT_LIMIT {
+    if length > ENTITLEMENT_LIMIT {
+        if let Some(bytes) = result.as_mut() {
+            bytes.zeroize();
+        }
         return Err(PackError::Invalid(
             "stored entitlement exceeds its size limit",
         ));
     }
-    Ok(result)
+    Ok(result.take().unwrap_or_default())
 }
 
 #[cfg(windows)]
@@ -1508,7 +1743,9 @@ mod tests {
                 std::thread::spawn(move || {
                     let mut trusted = TrustedPublishers::default();
                     trusted.insert(name, "00".repeat(32), [0; 32]);
-                    write_atomic_after_check(&path, &trusted.to_json().unwrap(), || barrier.wait())
+                    write_atomic_after_check(&path, &trusted.to_json().unwrap(), || {
+                        barrier.wait();
+                    })
                 })
             })
             .collect();

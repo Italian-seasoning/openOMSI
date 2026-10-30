@@ -8,10 +8,10 @@ use std::{
 };
 
 use omsi_pack::{
-    create_pack, issue_entitlement, load_manifest_signed_by, random_content_key, unlock,
-    AssetInput, Dependency, PackMetadata, SigningKey, SystemKeyStore, TrustedPublishers,
-    VerifiedPack,
+    issue_entitlement, load_manifest_signed_by, unlock, SigningKey, SystemKeyStore,
+    TrustedPublishers, VerifiedPack,
 };
+use zeroize::Zeroizing;
 
 const PRIVATE_KEY_LIMIT: usize = 16 * 1024;
 const CONTENT_KEY_LENGTH: usize = 32;
@@ -49,7 +49,7 @@ fn keygen(private_path: &Path, trust_path: &Path, publisher: &str) -> Result<(),
     if private_path.exists() || trust_path.exists() {
         return Err("refusing to overwrite an existing key or publisher file".into());
     }
-    let (signer, _) = SigningKey::generate_pkcs8(&ring::rand::SystemRandom::new()).map_err(show)?;
+    let signer = SigningKey::generate(&ring::rand::SystemRandom::new()).map_err(show)?;
     let mut trust = TrustedPublishers::default();
     trust.insert(publisher, signer.key_id(), signer.public_key());
     signer.save_private_key(private_path).map_err(show)?;
@@ -74,14 +74,18 @@ fn issue(
     let expires = expires
         .parse::<u64>()
         .map_err(|_| "expiry must be Unix seconds".to_string())?;
-    let signing_bytes = read_private_file(private_path, PRIVATE_KEY_LIMIT).map_err(show)?;
+    let signing_bytes =
+        Zeroizing::new(read_private_file(private_path, PRIVATE_KEY_LIMIT).map_err(show)?);
     let signer = SigningKey::from_pkcs8(&signing_bytes).map_err(show)?;
-    let key_bytes = read_private_file(key_path, CONTENT_KEY_LENGTH).map_err(show)?;
+    let key_bytes = Zeroizing::new(read_private_file(key_path, CONTENT_KEY_LENGTH).map_err(show)?);
     let key: [u8; CONTENT_KEY_LENGTH] = key_bytes
+        .as_slice()
         .try_into()
         .map_err(|_| "pack key must contain exactly 32 bytes".to_string())?;
+    let key = Zeroizing::new(key);
     let manifest = load_manifest_signed_by(pack, &signer).map_err(show)?;
-    let entitlement = issue_entitlement(&manifest, key, expires, &signer).map_err(show)?;
+    let entitlement =
+        Zeroizing::new(issue_entitlement(&manifest, *key, expires, &signer).map_err(show)?);
     write_private_file(output, &entitlement).map_err(show)?;
     println!(
         "Created publisher-signed offline entitlement for {} {}.",
@@ -92,7 +96,8 @@ fn issue(
 
 fn unlock_pack(pack: &Path, entitlement_path: &Path, trust_path: &Path) -> Result<(), String> {
     let trusted = TrustedPublishers::load_file(trust_path).map_err(show)?;
-    let entitlement = read_private_file(entitlement_path, ENTITLEMENT_LIMIT).map_err(show)?;
+    let entitlement =
+        Zeroizing::new(read_private_file(entitlement_path, ENTITLEMENT_LIMIT).map_err(show)?);
     let manifest = unlock(pack, &entitlement, &trusted, &SystemKeyStore).map_err(show)?;
     println!(
         "Unlocked {} {} for offline play on this account.",

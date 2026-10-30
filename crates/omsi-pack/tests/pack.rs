@@ -433,6 +433,7 @@ fn cancellation_truncation_reordering_and_storage_failure_fail_closed() {
     )
     .is_err());
     assert!(!cancelled_path.exists());
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
 
     let (out, signer, trust) = make_pack(&root, "tampered.oopp", &key, &source);
     let manifest = load_manifest(&out, &trust).unwrap();

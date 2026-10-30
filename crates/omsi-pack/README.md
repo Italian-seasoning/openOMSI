@@ -18,6 +18,9 @@ rejects unsupported versions, non-canonical JSON, unknown fields, untrusted keys
 case-colliding paths, duplicate identities, malformed hashes and bounded-size violations before
 using pack data.
 
+For a protected pack, the publisher assigns `key_id` as the lowercase SHA-256 of the fresh
+32-byte AES key. Generate a new random content key for each new pack or version.
+
 ## Protected assets
 
 `assets/<opaque-asset-id>/<chunk-number>.bin` stores one 12-byte random nonce followed by the
@@ -32,6 +35,11 @@ signed output hash before a decoder receives it. The runtime obtains the files t
 virtual filesystem so the ordinary editor and texture-cache write guards still apply. Plaintext
 exists in process memory and may reach GPU or operating-system paging; a modified player can
 capture it. Encryption cannot prevent that on a computer that must render the asset.
+
+Pack output is assembled in a private sibling directory and atomically renamed into place only
+after the signed manifest is complete. An operating-system crash during creation can leave an
+incomplete `.omsi-pack-stage-<random>.tmp` sibling; it is never accepted as a pack and can be
+removed after the publisher tool has stopped.
 
 ## Offline entitlement
 
