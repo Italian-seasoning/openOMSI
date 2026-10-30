@@ -76,6 +76,7 @@ fn metadata(key_id: Option<String>) -> PackMetadata {
 fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
     let root = scratch();
     let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
     let out = root.join("pack.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let mut trust = TrustedPublishers::default();
@@ -125,6 +126,7 @@ fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
 fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
     let root = scratch();
     let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
     let out = root.join("pack.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let trust = TrustedPublishers::default();
@@ -191,6 +193,7 @@ fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
 fn publisher_keys_round_trip_and_cached_manifest_does_not_need_asset_blobs() {
     let root = scratch();
     let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
     let out = root.join("pack.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let mut trust = TrustedPublishers::default();
