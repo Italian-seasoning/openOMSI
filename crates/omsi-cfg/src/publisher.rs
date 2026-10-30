@@ -716,7 +716,7 @@ pub fn validate_map(map_dir: &Path) -> io::Result<DependencyMounts> {
                 .path
                 .as_str();
             if roots_added
-                .insert(reference.path.clone(), mount.join(canonical))
+                .insert(path_key(&reference.path), mount.join(canonical))
                 .is_some()
             {
                 for root in virtual_mounts.drain(..).rev() {

@@ -5,7 +5,7 @@ on:
   push:
     branches: [feat/content-protection]
   pull_request:
-    paths: ["crates/omsi-pack/**", "crates/omsi-cfg/**", "crates/omsi-scene/**", "Cargo.*", ".github/workflows/content-protection.yml"]
+    paths: ["crates/omsi-pack/**", "crates/omsi-cfg/**", "crates/omsi-scene/**", "crates/omsi-app/**", "Cargo.*", ".github/workflows/content-protection.yml"]
 
 permissions:
   contents: read
@@ -31,6 +31,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: content-protection-${{ matrix.os }}
+          cache-on-failure: true
+          cache-workspace-crates: true
       - name: Format inputs
         shell: bash
         run: cargo metadata --no-deps --format-version 1 > /dev/null
@@ -47,6 +49,12 @@ jobs:
         run: cargo test -p omsi-pack --test cli
       - name: Native format and loader tests
         run: cargo test -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
+
+      - name: Architecture and size guards
+        if: runner.os == 'macOS'
+        run: |
+          bash scripts/arch-guard.sh
+          bash scripts/size-budget.sh
 
       - name: Runtime type check
         if: always()

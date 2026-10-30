@@ -241,3 +241,80 @@ fn ordinary_map_has_no_compulsory_manifest_and_missing_dependency_is_an_error() 
     omsi_cfg::remove_content_root(&root);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn one_locked_optional_pack_does_not_hide_other_installed_maps() {
+    let _guard = TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let root =
+        std::env::temp_dir().join(format!("omsi-publisher-isolation-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("Packs")).unwrap();
+    let plain_signer = SigningKey::generate(&ring::rand::SystemRandom::new()).unwrap();
+    let locked_signer = SigningKey::generate(&ring::rand::SystemRandom::new()).unwrap();
+    let mut trust = TrustedPublishers::default();
+    trust.insert("fixture", plain_signer.key_id(), plain_signer.public_key());
+    trust.insert("locked", locked_signer.key_id(), locked_signer.public_key());
+    trust.save_file(&root.join("Publishers.json")).unwrap();
+    omsi_pack::create_pack(
+        &root.join("Packs/plain.oopp"),
+        PackMetadata {
+            publisher_id: "fixture".into(),
+            author: "Fixture".into(),
+            pack_id: "plain".into(),
+            version: "1.0.0".into(),
+            license: "CC0-1.0".into(),
+            redistribution: true,
+            key_id: None,
+            dependencies: vec![],
+        },
+        &[fixture_asset("plain-map", "maps/Plain/global.cfg")],
+        &plain_signer,
+        None,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let content_key = omsi_pack::random_content_key().unwrap();
+    let key_id = omsi_pack::sha256_hex(&content_key);
+    omsi_pack::create_pack(
+        &root.join("Packs/locked.oopp"),
+        PackMetadata {
+            publisher_id: "locked".into(),
+            author: "Fixture".into(),
+            pack_id: "locked".into(),
+            version: "1.0.0".into(),
+            license: "CC0-1.0".into(),
+            redistribution: false,
+            key_id: Some(key_id),
+            dependencies: vec![],
+        },
+        &[fixture_asset("locked-map", "maps/Locked/global.cfg")],
+        &locked_signer,
+        Some(&content_key),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    let map = root.join("maps/RequiresLocked");
+    std::fs::create_dir_all(&map).unwrap();
+    std::fs::write(map.join("dependencies.json"), serde_json::json!({"format_version":1,"dependencies":[{"publisher_id":"locked","pack_id":"locked","version":"1.0.0"}],"assets":[]}).to_string()).unwrap();
+
+    let mounts = omsi_cfg::publisher::mount_packs(&root).unwrap();
+    let plain_mount = mounts
+        .iter()
+        .find(|m| m.to_string_lossy().contains("plain.oopp"))
+        .unwrap();
+    let plain = omsi_cfg::resolve_path(plain_mount, "maps/Plain/global.cfg");
+    assert_eq!(omsi_cfg::vfs::read(&plain).unwrap(), b"fixture");
+    omsi_cfg::add_content_root(root.clone());
+    assert!(
+        omsi_cfg::publisher::validate_map(&map).is_err(),
+        "map dependency should require its own unlock"
+    );
+    omsi_cfg::remove_content_root(&root);
+    for mount in mounts {
+        omsi_cfg::vfs::unmount_sealed(&mount);
+        omsi_cfg::remove_content_root(&mount);
+    }
+    std::fs::remove_dir_all(root).unwrap();
+}
