@@ -36,6 +36,9 @@ jobs:
         run: cargo metadata --no-deps --format-version 1 > /dev/null
       - name: Publisher loader contract
         run: cargo test -p omsi-cfg --test publisher
+      - name: Publisher manifest invariants
+        if: always()
+        run: cargo test -p omsi-pack --lib
       - name: Publisher pack contract
         if: always()
         run: cargo test -p omsi-pack --test pack

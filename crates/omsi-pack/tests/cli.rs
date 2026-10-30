@@ -31,6 +31,13 @@ fn private_file(path: &std::path::Path, bytes: &[u8]) {
     options.open(path).unwrap().write_all(bytes).unwrap();
 }
 
+fn bounded_cli_error(stderr: &[u8], secret: &[u8]) -> String {
+    if stderr.windows(secret.len()).any(|window| window == secret) {
+        return "[redacted diagnostic]".into();
+    }
+    String::from_utf8_lossy(stderr).chars().take(512).collect()
+}
+
 #[cfg(any(target_os = "macos", windows))]
 struct UnlockCleanup {
     pack: std::path::PathBuf,
@@ -115,7 +122,11 @@ fn command_line_issues_unlocks_and_reopens_a_signed_pack_in_a_new_process() {
         ])
         .output()
         .unwrap();
-    assert!(issued.status.success(), "issuer failed");
+    assert!(
+        issued.status.success(),
+        "issuer failed: {}",
+        bounded_cli_error(&issued.stderr, &key)
+    );
     assert!(!String::from_utf8_lossy(&issued.stdout).contains("\"content_key\""));
 
     let trusted = TrustedPublishers::load_file(&trust).unwrap();

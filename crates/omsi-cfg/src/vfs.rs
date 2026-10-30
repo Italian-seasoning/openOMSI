@@ -24,7 +24,7 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 mod sealed;
-pub use sealed::{is_sealed, mount_sealed, random_key, seal, sealed_len, unmount_sealed, unseal, SealKey, SealedFile, SEALED_OVERHEAD};
+pub use sealed::{is_sealed, mount_publisher, mount_sealed, random_key, seal, sealed_len, unmount_sealed, unseal, SealKey, SealedFile, SEALED_OVERHEAD};
 
 /// One file inside an archive.
 #[derive(Debug, Clone)]
@@ -433,7 +433,7 @@ fn memory_file(path: &Path) -> Option<Arc<[u8]>> {
 
 /// Whether a VFS layer takes precedence over the plain file at this path.
 pub fn is_virtual(path: &Path) -> bool {
-    memory_file(path).is_some() || is_sealed(path) || archive_of(path).is_some()
+    memory_file(path).is_some() || sealed::locate(path).is_some() || archive_of(path).is_some()
 }
 
 /// Read a whole file, from a folder, a mounted archive or a sealed store.
