@@ -328,7 +328,9 @@ pub fn create_pack(
     }
     if let (Some(id), Some(key)) = (&metadata.key_id, content_key) {
         if id != &sha256_hex(key) {
-            return Err(PackError::Invalid("content key id must be its SHA-256 hash"));
+            return Err(PackError::Invalid(
+                "content key id must be its SHA-256 hash",
+            ));
         }
     }
 
@@ -601,7 +603,7 @@ impl VerifiedPack {
         let mut out = Vec::with_capacity(asset.size as usize);
         if let Some(key) = &self.content_key {
             let cipher = LessSafeKey::new(
-                UnboundKey::new(&AES_256_GCM, &key).map_err(|_| PackError::WrongKey)?,
+                UnboundKey::new(&AES_256_GCM, key).map_err(|_| PackError::WrongKey)?,
             );
             for (index, chunk) in asset.chunks.iter().enumerate() {
                 let blob = self.read_chunk(chunk)?;
@@ -645,7 +647,7 @@ impl VerifiedPack {
         for asset in &self.manifest.assets {
             if let Some(key) = &self.content_key {
                 let cipher = LessSafeKey::new(
-                    UnboundKey::new(&AES_256_GCM, &key).map_err(|_| PackError::WrongKey)?,
+                    UnboundKey::new(&AES_256_GCM, key).map_err(|_| PackError::WrongKey)?,
                 );
                 let mut digest = Sha256::new();
                 let mut size = 0u64;
@@ -1105,7 +1107,7 @@ fn read_bounded_file(path: &Path, max: usize) -> Result<Vec<u8>> {
     if metadata.len() > max as u64 {
         return Err(PackError::Invalid("file exceeds its size limit"));
     }
-    let mut f = File::open(path)?;
+    let f = File::open(path)?;
     let mut out = Vec::with_capacity(metadata.len() as usize);
     f.take(max as u64 + 1).read_to_end(&mut out)?;
     if out.len() > max {
