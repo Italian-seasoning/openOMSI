@@ -22,6 +22,112 @@ fn lanes(text: &str, pos: DVec3, heading: f64) -> Vec<Lane> {
     object_lanes(&sco, pos, [heading, 0.0, 0.0], None, (0, 0), 1, &[])
 }
 
+struct PublisherMapFixture(PathBuf);
+
+impl PublisherMapFixture {
+    fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let root = std::env::temp_dir().join(format!(
+            "openomsi-scene-publisher-map-{}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+        ));
+        std::fs::create_dir_all(root.join("Packs")).unwrap();
+        let map = root.join("maps/Fixture");
+        std::fs::create_dir_all(&map).unwrap();
+        std::fs::write(map.join("global.cfg"), "[name]\nPublisher alias fixture\n").unwrap();
+
+        let signer = omsi_pack::SigningKey::generate(&ring::rand::SystemRandom::new()).unwrap();
+        let mut trust = omsi_pack::TrustedPublishers::default();
+        trust.insert("fixture", signer.key_id(), signer.public_key());
+        trust.save_file(&root.join("Publishers.json")).unwrap();
+        let assets = [
+            omsi_pack::AssetInput {
+                id: "object".into(),
+                path: "Sceneryobjects/Fixture/original.sco".into(),
+                source_sha256: "11".repeat(32),
+                bytes: Vec::new(),
+            },
+            omsi_pack::AssetInput {
+                id: "spline".into(),
+                path: "Splines/Fixture/original.sli".into(),
+                source_sha256: "22".repeat(32),
+                bytes: Vec::new(),
+            },
+        ];
+        omsi_pack::create_pack(
+            &root.join("Packs/fixture.oopp"),
+            omsi_pack::PackMetadata {
+                publisher_id: "fixture".into(),
+                author: "Fixture".into(),
+                pack_id: "scene-types".into(),
+                version: "1.0.0".into(),
+                license: "CC0-1.0".into(),
+                redistribution: false,
+                key_id: None,
+                dependencies: Vec::new(),
+            },
+            &assets,
+            &signer,
+            None,
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+        std::fs::write(
+            map.join("dependencies.json"),
+            serde_json::json!({
+                "format_version": 1,
+                "dependencies": [{"publisher_id":"fixture","pack_id":"scene-types","version":"1.0.0"}],
+                "assets": [
+                    {"path":"Sceneryobjects/Fixture/renamed.sco","dependency":{"publisher_id":"fixture","pack_id":"scene-types","version":"1.0.0"},"asset_id":"object"},
+                    {"path":"Splines/Fixture/renamed.sli","dependency":{"publisher_id":"fixture","pack_id":"scene-types","version":"1.0.0"},"asset_id":"spline"}
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        omsi_cfg::add_content_root(root.clone());
+        Self(root)
+    }
+
+    fn map_dir(&self) -> PathBuf {
+        self.0.join("maps/Fixture")
+    }
+}
+
+impl Drop for PublisherMapFixture {
+    fn drop(&mut self) {
+        omsi_cfg::remove_content_root(&self.0);
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[test]
+fn world_loaders_resolve_publisher_aliases_from_the_map_scope() {
+    static CONTENT_ROOT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = CONTENT_ROOT_TEST_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let fixture = PublisherMapFixture::new();
+    let map_dir = fixture.map_dir();
+    let world = World::open(&fixture.0, &map_dir.join("global.cfg"), 20261001).unwrap();
+
+    assert!(
+        world
+            .object_type("Sceneryobjects/Fixture/renamed.sco")
+            .is_some(),
+        "World object lookup must resolve the map's signed alias"
+    );
+    assert!(
+        world.spline_type("Splines/Fixture/renamed.sli").is_some(),
+        "World spline lookup must resolve the map's signed alias"
+    );
+}
+
 #[test]
 fn object_path_gradients_preserve_heights_and_reverse_samples() {
     // The expected heights are independent hand-calculated checkpoints, including
