@@ -300,6 +300,8 @@ fn one_locked_optional_pack_does_not_hide_other_installed_maps() {
     std::fs::write(map.join("dependencies.json"), serde_json::json!({"format_version":1,"dependencies":[{"publisher_id":"locked","pack_id":"locked","version":"1.0.0"}],"assets":[]}).to_string()).unwrap();
 
     let mounts = omsi_cfg::publisher::mount_packs(&root).unwrap();
+    assert_eq!(mounts.len(), 1, "the locked optional pack must be skipped");
+    assert!(mounts[0].to_string_lossy().contains("plain.oopp"));
     let plain_mount = mounts
         .iter()
         .find(|m| m.to_string_lossy().contains("plain.oopp"))
