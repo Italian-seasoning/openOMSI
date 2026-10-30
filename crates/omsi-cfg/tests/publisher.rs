@@ -4,7 +4,7 @@ static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_manifest_removal() {
-    let _guard = TEST_LOCK.lock().unwrap();
+    let _guard = TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let root =
         std::env::temp_dir().join(format!("omsi-publisher-integration-{}", std::process::id()));
     std::fs::create_dir_all(root.join("Packs")).unwrap();
@@ -12,6 +12,7 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
     let mut trust = TrustedPublishers::default();
     trust.insert("fixture", signer.key_id(), signer.public_key());
     trust.save_file(&root.join("Publishers.json")).unwrap();
+    omsi_cfg::add_content_root(root.clone());
     let source = "12".repeat(32);
     let metadata = PackMetadata {
         publisher_id: "fixture".into(),
@@ -76,12 +77,13 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
         omsi_cfg::vfs::unmount_sealed(&mount);
         omsi_cfg::remove_content_root(&mount);
     }
+    omsi_cfg::remove_content_root(&root);
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn ordinary_map_has_no_compulsory_manifest_and_missing_dependency_is_an_error() {
-    let _guard = TEST_LOCK.lock().unwrap();
+    let _guard = TEST_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let root = std::env::temp_dir().join(format!(
         "omsi-dependency-integration-{}",
         std::process::id()
