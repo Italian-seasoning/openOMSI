@@ -21,18 +21,18 @@ use std::{
 };
 use unicode_normalization::UnicodeNormalization;
 use zeroize::{Zeroize, Zeroizing};
+pub mod storage;
 
 const FORMAT_VERSION: u32 = 1;
 const MANIFEST_LIMIT: usize = 1024 * 1024;
 const TRUST_LIMIT: usize = 256 * 1024;
-const ENTITLEMENT_LIMIT: usize = 64 * 1024;
+pub(crate) const ENTITLEMENT_LIMIT: usize = 64 * 1024;
 const MAX_ASSETS: usize = 4096;
 const MAX_DEPENDENCIES: usize = 256;
 const CHUNK_SIZE: usize = 64 * 1024;
 const MAX_ASSET_SIZE: u64 = 64 * 1024 * 1024;
 const MAX_PACK_SIZE: u64 = 1024 * 1024 * 1024;
 const TAG_SIZE: usize = 16;
-const SERVICE: &str = "org.openomsi.protected-pack";
 
 pub type Result<T> = std::result::Result<T, PackError>;
 
@@ -790,27 +790,7 @@ pub fn issue_entitlement(
     Ok(serde_json::to_vec(&signed)?)
 }
 
-pub trait KeyStore {
-    /// Store the signed entitlement envelope as an opaque native-protected secret.
-    fn store(&self, scope: &str, signed_entitlement: &[u8]) -> Result<()>;
-    fn load(&self, scope: &str) -> Result<Vec<u8>>;
-    fn delete(&self, scope: &str) -> Result<()>;
-}
-
-/// OS-native key store: Keychain on macOS and user-scoped DPAPI on Windows.
-pub struct SystemKeyStore;
-
-impl KeyStore for SystemKeyStore {
-    fn store(&self, scope: &str, signed_entitlement: &[u8]) -> Result<()> {
-        native_store(scope, signed_entitlement)
-    }
-    fn load(&self, scope: &str) -> Result<Vec<u8>> {
-        native_load(scope)
-    }
-    fn delete(&self, scope: &str) -> Result<()> {
-        native_delete(scope)
-    }
-}
+pub use storage::{KeyStore, SystemKeyStore};
 
 /// Verify a publisher-signed bearer entitlement against the pack's signed manifest, then
 /// persist its content key in the caller's native protected store.
@@ -893,14 +873,6 @@ fn entitlement_scope(manifest: &Manifest, key_id: &str) -> Result<String> {
     bytes.push(0);
     bytes.extend_from_slice(key_id.as_bytes());
     Ok(sha256_hex(&bytes))
-}
-
-fn validate_scope(scope: &str) -> Result<()> {
-    if is_sha256(scope) {
-        Ok(())
-    } else {
-        Err(PackError::Invalid("native entitlement scope is malformed"))
-    }
 }
 
 fn validate_metadata(m: &PackMetadata) -> Result<()> {
@@ -1170,7 +1142,7 @@ fn validate_sha_field(value: &str) -> Result<()> {
         Err(PackError::Invalid("SHA-256 value is malformed"))
     }
 }
-fn is_sha256(value: &str) -> bool {
+pub(crate) fn is_sha256(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()
@@ -1223,7 +1195,7 @@ fn random_nonce(used: &mut BTreeSet<[u8; NONCE_LEN]>) -> Result<[u8; NONCE_LEN]>
     ))
 }
 
-fn read_bounded_file(path: &Path, max: usize) -> Result<Vec<u8>> {
+pub(crate) fn read_bounded_file(path: &Path, max: usize) -> Result<Vec<u8>> {
     ensure_regular_file(path)?;
     let metadata = fs::symlink_metadata(path)?;
     if metadata.len() > max as u64 {
@@ -1467,381 +1439,5 @@ fn now_unix() -> Result<u64> {
         .as_secs())
 }
 
-#[cfg(target_os = "macos")]
-fn native_store(scope: &str, secret: &[u8]) -> Result<()> {
-    validate_scope(scope)?;
-    security_framework::passwords::set_generic_password(SERVICE, scope, secret)
-        .map_err(|e| PackError::SecureStorage(e.to_string()))
-}
-
-#[cfg(target_os = "macos")]
-fn native_load(scope: &str) -> Result<Vec<u8>> {
-    validate_scope(scope)?;
-    security_framework::passwords::generic_password(
-        security_framework::passwords::PasswordOptions::new_generic_password(SERVICE, scope),
-    )
-    .map_err(|e| PackError::SecureStorage(e.to_string()))
-}
-
-#[cfg(target_os = "macos")]
-fn native_delete(scope: &str) -> Result<()> {
-    validate_scope(scope)?;
-    security_framework::passwords::delete_generic_password(SERVICE, scope)
-        .map_err(|e| PackError::SecureStorage(e.to_string()))
-}
-
-#[cfg(windows)]
-fn native_store(scope: &str, secret: &[u8]) -> Result<()> {
-    use std::ffi::c_void;
-    use windows::Win32::{
-        Foundation::{LocalFree, HLOCAL},
-        Security::Cryptography::{CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB},
-    };
-    validate_scope(scope)?;
-    let input = CRYPT_INTEGER_BLOB {
-        cbData: secret.len() as u32,
-        pbData: secret.as_ptr() as *mut u8,
-    };
-    let mut entropy_bytes = Sha256::digest(scope.as_bytes());
-    let entropy = CRYPT_INTEGER_BLOB {
-        cbData: entropy_bytes.len() as u32,
-        pbData: entropy_bytes.as_mut_ptr(),
-    };
-    let mut output = CRYPT_INTEGER_BLOB::default();
-    unsafe {
-        CryptProtectData(
-            &input,
-            windows::core::PCWSTR::null(),
-            Some(&entropy),
-            None,
-            None,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        )
-    }
-    .map_err(|e| PackError::SecureStorage(e.to_string()))?;
-    let protected =
-        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(output.pbData as *mut c_void)));
-    }
-    write_windows_key(scope, &protected)
-}
-
-#[cfg(windows)]
-fn native_load(scope: &str) -> Result<Vec<u8>> {
-    use std::ffi::c_void;
-    use windows::Win32::{
-        Foundation::{LocalFree, HLOCAL},
-        Security::Cryptography::{
-            CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
-        },
-    };
-    validate_scope(scope)?;
-    let path = windows_key_path(scope)?;
-    let encrypted = read_bounded_file(&path, ENTITLEMENT_LIMIT + 4096)?;
-    let input = CRYPT_INTEGER_BLOB {
-        cbData: encrypted.len() as u32,
-        pbData: encrypted.as_ptr() as *mut u8,
-    };
-    let mut entropy_bytes = Sha256::digest(scope.as_bytes());
-    let entropy = CRYPT_INTEGER_BLOB {
-        cbData: entropy_bytes.len() as u32,
-        pbData: entropy_bytes.as_mut_ptr(),
-    };
-    let mut output = CRYPT_INTEGER_BLOB::default();
-    unsafe {
-        CryptUnprotectData(
-            &input,
-            None,
-            Some(&entropy),
-            None,
-            None,
-            CRYPTPROTECT_UI_FORBIDDEN,
-            &mut output,
-        )
-    }
-    .map_err(|_| {
-        PackError::SecureStorage(
-            "DPAPI could not unlock this key for the current Windows user".into(),
-        )
-    })?;
-    let length = output.cbData as usize;
-    if output.pbData.is_null() {
-        return Err(PackError::Invalid("DPAPI returned an empty entitlement"));
-    }
-    if length == 0 {
-        unsafe {
-            let _ = LocalFree(Some(HLOCAL(output.pbData as *mut c_void)));
-        }
-        return Err(PackError::Invalid("DPAPI returned an empty entitlement"));
-    }
-    let mut result = unsafe {
-        let decrypted = std::slice::from_raw_parts_mut(output.pbData, length);
-        let copy = if length <= ENTITLEMENT_LIMIT {
-            Some(decrypted.to_vec())
-        } else {
-            None
-        };
-        decrypted.zeroize();
-        copy
-    };
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(output.pbData as *mut c_void)));
-    }
-    if length > ENTITLEMENT_LIMIT {
-        if let Some(bytes) = result.as_mut() {
-            bytes.zeroize();
-        }
-        return Err(PackError::Invalid(
-            "stored entitlement exceeds its size limit",
-        ));
-    }
-    Ok(result.take().unwrap_or_default())
-}
-
-#[cfg(windows)]
-fn native_delete(scope: &str) -> Result<()> {
-    validate_scope(scope)?;
-    let path = windows_key_path(scope)?;
-    fs::remove_file(path).map_err(|e| {
-        if e.kind() == io::ErrorKind::NotFound {
-            PackError::KeyNotFound
-        } else {
-            e.into()
-        }
-    })
-}
-
-#[cfg(windows)]
-fn windows_key_path(scope: &str) -> Result<PathBuf> {
-    validate_scope(scope)?;
-    let base = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .ok_or(PackError::SecureStorageUnavailable)?;
-    let dir = base.join("openOMSI/protected-keys");
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join(format!("{scope}.dpapi")))
-}
-
-#[cfg(windows)]
-fn write_windows_key(scope: &str, value: &[u8]) -> Result<()> {
-    use std::{io::Write as _, os::windows::ffi::OsStrExt};
-    use windows::{
-        core::PCWSTR,
-        Win32::Storage::FileSystem::{
-            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-        },
-    };
-    let path = windows_key_path(scope)?;
-    let tmp = path.with_extension(format!("{}.tmp", std::process::id()));
-    let mut f = OpenOptions::new().write(true).create_new(true).open(&tmp)?;
-    if let Err(e) = f.write_all(value).and_then(|_| f.sync_all()) {
-        let _ = fs::remove_file(tmp);
-        return Err(e.into());
-    }
-    let source: Vec<u16> = tmp.as_os_str().encode_wide().chain([0]).collect();
-    let target: Vec<u16> = path.as_os_str().encode_wide().chain([0]).collect();
-    if let Err(e) = unsafe {
-        MoveFileExW(
-            PCWSTR(source.as_ptr()),
-            PCWSTR(target.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
-    } {
-        let _ = fs::remove_file(tmp);
-        return Err(PackError::SecureStorage(e.to_string()));
-    }
-    Ok(())
-}
-
-#[cfg(not(any(target_os = "macos", windows)))]
-fn native_store(_: &str, _: &[u8]) -> Result<()> {
-    Err(PackError::SecureStorageUnavailable)
-}
-#[cfg(not(any(target_os = "macos", windows)))]
-fn native_load(_: &str) -> Result<Vec<u8>> {
-    Err(PackError::SecureStorageUnavailable)
-}
-#[cfg(not(any(target_os = "macos", windows)))]
-fn native_delete(_: &str) -> Result<()> {
-    Err(PackError::SecureStorageUnavailable)
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn digest_format_is_lowercase_and_stable() {
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
-
-    #[test]
-    fn a_trusted_signature_does_not_make_unicode_file_directory_collisions_valid() {
-        let root =
-            std::env::temp_dir().join(format!("omsi-pack-signed-collision-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        let pack = root.join("signed.oopp");
-        let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-        let manifest = create_pack(
-            &pack,
-            PackMetadata {
-                publisher_id: "owned-fixture-publisher".into(),
-                author: "Fixture".into(),
-                pack_id: "collision-fixture".into(),
-                version: "1".into(),
-                license: "CC0-1.0".into(),
-                redistribution: false,
-                key_id: None,
-                dependencies: Vec::new(),
-            },
-            &[AssetInput {
-                id: "file".into(),
-                path: "maps/Café".into(),
-                source_sha256: sha256_hex(b"source"),
-                bytes: b"a".to_vec(),
-            }],
-            &signer,
-            None,
-            &AtomicBool::new(false),
-        )
-        .unwrap();
-        let mut hostile = manifest;
-        hostile.assets.push(Asset {
-            id: "child".into(),
-            path: "maps/Cafe\u{301}/child".into(),
-            source_sha256: sha256_hex(b"child source"),
-            output_sha256: sha256_hex(b"b"),
-            size: 1,
-            chunks: Vec::new(),
-        });
-        let bytes = serde_json::to_vec(&hostile).unwrap();
-        fs::write(pack.join("manifest.json"), &bytes).unwrap();
-        fs::write(pack.join("manifest.sig"), signer.pair.sign(&bytes).as_ref()).unwrap();
-        let mut trusted = TrustedPublishers::default();
-        trusted.insert(
-            "owned-fixture-publisher",
-            signer.key_id(),
-            signer.public_key(),
-        );
-        assert!(load_manifest(&pack, &trusted).is_err());
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn concurrent_publisher_file_saves_never_replace_the_winner() {
-        use std::sync::{Arc, Barrier};
-
-        let root = std::env::temp_dir().join(format!("omsi-pack-save-race-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        let path = root.join("Publishers.json");
-        let barrier = Arc::new(Barrier::new(2));
-        let writers: Vec<_> = ["publisher-a", "publisher-b"]
-            .into_iter()
-            .map(|name| {
-                let path = path.clone();
-                let barrier = barrier.clone();
-                std::thread::spawn(move || {
-                    let mut trusted = TrustedPublishers::default();
-                    trusted.insert(name, "00".repeat(32), [0; 32]);
-                    write_atomic_after_check(&path, &trusted.to_json().unwrap(), || {
-                        barrier.wait();
-                    })
-                })
-            })
-            .collect();
-        let successes = writers
-            .into_iter()
-            .map(|writer| writer.join().unwrap())
-            .filter(Result::is_ok)
-            .count();
-        assert_eq!(successes, 1);
-        let written = TrustedPublishers::load_file(&path).unwrap();
-        assert_eq!(written.publishers.len(), 1);
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn an_expired_signed_grant_is_rejected_even_when_already_cached() {
-        let root = std::env::temp_dir().join(format!("omsi-pack-expiry-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        let pack = root.join("expired.oopp");
-        let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-        let key = random_content_key().unwrap();
-        let manifest = create_pack(
-            &pack,
-            PackMetadata {
-                publisher_id: "expiry-fixture-publisher".into(),
-                author: "Fixture".into(),
-                pack_id: "expiry-fixture-pack".into(),
-                version: "1".into(),
-                license: "CC0-1.0".into(),
-                redistribution: false,
-                key_id: Some(sha256_hex(&key)),
-                dependencies: Vec::new(),
-            },
-            &[AssetInput {
-                id: "fixture".into(),
-                path: "maps/Fixture/global.cfg".into(),
-                source_sha256: sha256_hex(b"source"),
-                bytes: b"owned synthetic fixture".to_vec(),
-            }],
-            &signer,
-            Some(&key),
-            &AtomicBool::new(false),
-        )
-        .unwrap();
-        let mut trusted = TrustedPublishers::default();
-        trusted.insert(
-            "expiry-fixture-publisher",
-            signer.key_id(),
-            signer.public_key(),
-        );
-        let expires = now_unix().unwrap() + 3600;
-        let bytes = issue_entitlement(&manifest, key, expires, &signer).unwrap();
-        let mut signed: SignedEntitlement = serde_json::from_slice(&bytes).unwrap();
-        signed.entitlement.expires_unix = now_unix().unwrap() - 1;
-        let canonical = serde_json::to_vec(&signed.entitlement).unwrap();
-        signed.signature = signer.pair.sign(&canonical).as_ref().to_vec();
-        let expired = serde_json::to_vec(&signed).unwrap();
-        let scope = entitlement_scope(&manifest, &manifest.key_id.clone().unwrap()).unwrap();
-        struct Cached {
-            scope: String,
-            bytes: Vec<u8>,
-        }
-        impl KeyStore for Cached {
-            fn store(&self, _: &str, _: &[u8]) -> Result<()> {
-                Ok(())
-            }
-            fn load(&self, scope: &str) -> Result<Vec<u8>> {
-                if scope == self.scope {
-                    Ok(self.bytes.clone())
-                } else {
-                    Err(PackError::KeyNotFound)
-                }
-            }
-            fn delete(&self, _: &str) -> Result<()> {
-                Ok(())
-            }
-        }
-        let cached = Cached {
-            scope,
-            bytes: expired.clone(),
-        };
-        assert!(matches!(
-            VerifiedPack::open_unlocked(&pack, &trusted, &cached),
-            Err(PackError::Expired)
-        ));
-        assert!(matches!(
-            unlock(&pack, &expired, &trusted, &cached),
-            Err(PackError::Expired)
-        ));
-        fs::remove_dir_all(root).unwrap();
-    }
-}
+mod tests;
