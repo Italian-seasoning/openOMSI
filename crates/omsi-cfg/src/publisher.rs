@@ -377,7 +377,8 @@ fn safe_game_path(path: &str) -> bool {
     })
 }
 
-fn checked_alias(alias: &str, canonical: &str) -> io::Result<()> {
+/// Validate a map's data alias against the signed asset path without mounting it.
+pub fn validate_asset_alias(alias: &str, canonical: &str) -> io::Result<()> {
     if !safe_game_path(alias) || !safe_game_path(canonical) {
         return Err(invalid("unsafe publisher asset path"));
     }
@@ -416,7 +417,7 @@ fn checked_alias(alias: &str, canonical: &str) -> io::Result<()> {
 fn check_aliases(aliases: &[(String, String)]) -> io::Result<()> {
     let mut seen = BTreeSet::new();
     for (alias, canonical) in aliases {
-        checked_alias(alias, canonical)?;
+        validate_asset_alias(alias, canonical)?;
         let key = path_key(alias);
         if !seen.insert(key.clone()) {
             return Err(invalid("duplicate publisher dependency alias"));
@@ -653,7 +654,7 @@ pub fn validate_map(map_dir: &Path) -> io::Result<DependencyMounts> {
             .iter()
             .find(|a| a.id == reference.asset_id)
             .ok_or_else(|| invalid("dependency asset identity was not found"))?;
-        checked_alias(&reference.path, &asset.path)?;
+        validate_asset_alias(&reference.path, &asset.path)?;
         aliases.push((reference.path.clone(), asset.path.clone()));
         let dep = pack_key(&reference.dependency);
         let signed_manifest = serde_json::to_vec(pack.manifest()).map_err(invalid)?;
