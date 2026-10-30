@@ -386,13 +386,24 @@ fn unicode_normalized_file_directory_prefix_collision_is_rejected_before_output(
         &out,
         metadata(Some(hash(&key))),
         &[
-            AssetInput { id: "file".into(), path: "maps/Café".into(), source_sha256: hash(b"a"), bytes: b"a".to_vec() },
-            AssetInput { id: "child".into(), path: "maps/Cafe\u{301}/child".into(), source_sha256: hash(b"b"), bytes: b"b".to_vec() },
+            AssetInput {
+                id: "file".into(),
+                path: "maps/Café".into(),
+                source_sha256: hash(b"a"),
+                bytes: b"a".to_vec()
+            },
+            AssetInput {
+                id: "child".into(),
+                path: "maps/Cafe\u{301}/child".into(),
+                source_sha256: hash(b"b"),
+                bytes: b"b".to_vec()
+            },
         ],
         &signer,
         Some(&key),
         &AtomicBool::new(false),
-    ).is_err());
+    )
+    .is_err());
     assert!(!out.exists());
     std::fs::remove_dir_all(root).unwrap();
 }

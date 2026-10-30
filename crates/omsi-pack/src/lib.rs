@@ -1492,6 +1492,38 @@ mod tests {
     }
 
     #[test]
+    fn concurrent_publisher_file_saves_never_replace_the_winner() {
+        use std::sync::{Arc, Barrier};
+
+        let root = std::env::temp_dir().join(format!("omsi-pack-save-race-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("Publishers.json");
+        let barrier = Arc::new(Barrier::new(2));
+        let writers: Vec<_> = ["publisher-a", "publisher-b"]
+            .into_iter()
+            .map(|name| {
+                let path = path.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let mut trusted = TrustedPublishers::default();
+                    trusted.insert(name, "00".repeat(32), [0; 32]);
+                    write_atomic_after_check(&path, &trusted.to_json().unwrap(), || barrier.wait())
+                })
+            })
+            .collect();
+        let successes = writers
+            .into_iter()
+            .map(|writer| writer.join().unwrap())
+            .filter(Result::is_ok)
+            .count();
+        assert_eq!(successes, 1);
+        let written = TrustedPublishers::load_file(&path).unwrap();
+        assert_eq!(written.publishers.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn an_expired_signed_grant_is_rejected_even_when_already_cached() {
         let root = std::env::temp_dir().join(format!("omsi-pack-expiry-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
