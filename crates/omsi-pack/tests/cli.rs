@@ -4,7 +4,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use omsi_pack::{create_pack, AssetInput, Dependency, PackMetadata, SigningKey};
+use omsi_pack::{
+    create_pack, forget_unlock, AssetInput, Dependency, PackMetadata, SigningKey, SystemKeyStore,
+    TrustedPublishers,
+};
 use ring::rand::SystemRandom;
 use sha2::Digest;
 
@@ -26,6 +29,19 @@ fn private_file(path: &std::path::Path, bytes: &[u8]) {
     }
     use std::io::Write as _;
     options.open(path).unwrap().write_all(bytes).unwrap();
+}
+
+#[cfg(any(target_os = "macos", windows))]
+struct UnlockCleanup {
+    pack: std::path::PathBuf,
+    trusted: TrustedPublishers,
+}
+
+#[cfg(any(target_os = "macos", windows))]
+impl Drop for UnlockCleanup {
+    fn drop(&mut self) {
+        let _ = forget_unlock(&self.pack, &self.trusted, &SystemKeyStore);
+    }
 }
 
 #[cfg(any(target_os = "macos", windows))]
@@ -102,6 +118,11 @@ fn command_line_issues_unlocks_and_reopens_a_signed_pack_in_a_new_process() {
     assert!(issued.status.success(), "issuer failed");
     assert!(!String::from_utf8_lossy(&issued.stdout).contains("\"content_key\""));
 
+    let trusted = TrustedPublishers::load_file(&trust).unwrap();
+    let _cleanup = UnlockCleanup {
+        pack: pack.clone(),
+        trusted,
+    };
     let unlocked = Command::new(binary)
         .args([
             "unlock",

@@ -8,8 +8,8 @@ use std::{
 };
 
 use omsi_pack::{
-    create_pack, issue_entitlement, load_manifest, unlock, AssetInput, Dependency, KeyStore,
-    PackError, PackMetadata, Result, SigningKey, TrustedPublishers, VerifiedPack,
+    create_pack, forget_unlock, issue_entitlement, load_manifest, unlock, AssetInput, Dependency,
+    KeyStore, PackError, PackMetadata, Result, SigningKey, TrustedPublishers, VerifiedPack,
 };
 use ring::rand::SystemRandom;
 
@@ -151,6 +151,8 @@ fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
     let pack = VerifiedPack::open_unlocked(&out, &trust, &keys).unwrap();
     assert_eq!(pack.read("maps/Test/global.cfg").unwrap(), bytes);
     assert_eq!(pack.assets().len(), 1);
+    forget_unlock(&out, &trust, &keys).unwrap();
+    assert!(VerifiedPack::open_unlocked(&out, &trust, &keys).is_err());
     std::fs::remove_dir_all(root).unwrap();
 }
 
