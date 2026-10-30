@@ -1,8 +1,10 @@
 use omsi_pack::{AssetInput, PackMetadata, SigningKey, TrustedPublishers};
 use std::sync::atomic::AtomicBool;
+static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_manifest_removal() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let root =
         std::env::temp_dir().join(format!("omsi-publisher-integration-{}", std::process::id()));
     std::fs::create_dir_all(root.join("Packs")).unwrap();
@@ -44,6 +46,25 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
     let object = omsi_cfg::resolve_path(&mounts[0], "Sceneryobjects/Fixture/sign.sco");
     let cfg = omsi_cfg::CfgFile::read(&object).unwrap();
     assert_eq!(cfg.lines[1], "Owned fixture");
+    let map = root.join("maps/Fixture");
+    std::fs::create_dir_all(&map).unwrap();
+    std::fs::write(map.join("dependencies.json"), serde_json::json!({
+        "format_version": 1,
+        "dependencies": [{"publisher_id":"fixture","pack_id":"scenery","version":"1.0.0"}],
+        "assets": [{"path":"Sceneryobjects/Fixture/renamed.sco","dependency":{"publisher_id":"fixture","pack_id":"scenery","version":"1.0.0"},"asset_id":"object"}]
+    }).to_string()).unwrap();
+    let before = omsi_cfg::content_roots();
+    {
+        let mounts = omsi_cfg::publisher::validate_map(&map).unwrap();
+        assert_eq!(omsi_cfg::content_roots().len(), before.len() + 1);
+        let renamed = omsi_cfg::resolve_path(&map, "Sceneryobjects/Fixture/renamed.sco");
+        assert_eq!(
+            omsi_cfg::CfgFile::read(&renamed).unwrap().lines[1],
+            "Owned fixture"
+        );
+        drop(mounts);
+    }
+    assert_eq!(omsi_cfg::content_roots(), before);
     std::fs::remove_file(pack.join("manifest.json")).unwrap();
     assert!(
         omsi_cfg::publisher::Catalog::load(&root)
@@ -60,6 +81,7 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
 
 #[test]
 fn ordinary_map_has_no_compulsory_manifest_and_missing_dependency_is_an_error() {
+    let _guard = TEST_LOCK.lock().unwrap();
     let root = std::env::temp_dir().join(format!(
         "omsi-dependency-integration-{}",
         std::process::id()
@@ -75,6 +97,12 @@ fn ordinary_map_has_no_compulsory_manifest_and_missing_dependency_is_an_error() 
             .to_string()
             .contains("missing")
     );
+    omsi_cfg::remove_content_root(&root);
+    std::fs::write(map.join("dependencies.json"), r#"{"format_version":1,"dependencies":[{"publisher_id":"missing","pack_id":"missing","version":"1.0.0"}],"assets":[{"path":"Plugins/evil.lua","dependency":{"publisher_id":"missing","pack_id":"missing","version":"1.0.0"},"asset_id":"missing"}]}"#).unwrap();
+    omsi_cfg::add_content_root(root.clone());
+    let before = omsi_cfg::content_roots();
+    assert!(omsi_cfg::publisher::validate_map(&map).is_err());
+    assert_eq!(omsi_cfg::content_roots(), before);
     omsi_cfg::remove_content_root(&root);
     std::fs::remove_dir_all(root).unwrap();
 }

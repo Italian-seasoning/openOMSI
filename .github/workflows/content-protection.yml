@@ -37,6 +37,7 @@ jobs:
       - name: Publisher loader contract
         run: cargo test -p omsi-cfg --test publisher
       - name: Publisher pack contract
+        if: always()
         run: cargo test -p omsi-pack --test pack
       - name: Native format and loader tests
         run: cargo test -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture

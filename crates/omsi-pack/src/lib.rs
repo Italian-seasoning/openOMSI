@@ -670,9 +670,9 @@ impl VerifiedPack {
                             "authenticated chunk size does not match manifest",
                         ));
                     }
-                    digest.update(plain);
-                    body.zeroize();
                     size += plain.len() as u64;
+                    digest.update(&*plain);
+                    body.zeroize();
                 }
                 if size != asset.size
                     || hex_digest(digest.finalize().as_slice()) != asset.output_sha256
