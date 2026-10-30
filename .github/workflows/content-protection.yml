@@ -33,6 +33,8 @@ jobs:
           key: content-protection-${{ matrix.os }}
       - name: Format inputs
         run: cargo metadata --no-deps --format-version 1
+      - name: Publisher loader contract
+        run: cargo test -p omsi-cfg --test publisher
       - name: Publisher pack contract
         run: cargo test -p omsi-pack --test pack
       - name: Native format and loader tests
