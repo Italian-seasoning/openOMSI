@@ -31,6 +31,8 @@ impl<T: Clone> OnceByKey<T> {
 
 impl World {
     pub fn open(root: &Path, global_cfg: &Path, date: i32) -> Result<World> {
+        omsi_cfg::publisher::validate_map(global_cfg.parent().unwrap_or(root))
+            .context("resolving publisher dependencies")?;
         let mut global = GlobalCfg::load(global_cfg)
             .with_context(|| format!("loading {}", global_cfg.display()))?;
         let map_dir = global.dir().to_path_buf();

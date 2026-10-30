@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: content-protection-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   native:
@@ -32,10 +32,19 @@ jobs:
         with:
           key: content-protection-${{ matrix.os }}
       - name: Format inputs
-        run: cargo metadata --no-deps --format-version 1
+        shell: bash
+        run: cargo metadata --no-deps --format-version 1 > /dev/null
       - name: Publisher loader contract
         run: cargo test -p omsi-cfg --test publisher
       - name: Publisher pack contract
         run: cargo test -p omsi-pack --test pack
       - name: Native format and loader tests
         run: cargo test -p omsi-cfg -p omsi-map -p omsi-o3d -p omsi-texture
+
+      - name: Resolved dependency lock
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-lock-${{ matrix.os }}
+          path: Cargo.lock
+          retention-days: 2

@@ -1,13 +1,61 @@
-use std::sync::atomic::AtomicBool;
+use std::{
+    collections::BTreeMap,
+    sync::{
+        atomic::{AtomicBool, AtomicU64},
+        Mutex,
+    },
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-use omsi_pack::{create_pack, AssetInput, Dependency, PackMetadata, SigningKey, TrustedPublishers, VerifiedPack};
+use omsi_pack::{
+    create_pack, issue_entitlement, load_manifest, unlock, AssetInput, Dependency, KeyStore,
+    PackError, PackMetadata, Result, SigningKey, TrustedPublishers, VerifiedPack,
+};
 use ring::rand::SystemRandom;
 
 fn scratch() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!("omsi-pack-test-{}", std::process::id()))
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "omsi-pack-test-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
 }
 
-fn metadata() -> PackMetadata {
+fn hash(bytes: &[u8]) -> String {
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[derive(Default)]
+struct MemoryKeys(Mutex<BTreeMap<String, Vec<u8>>>);
+
+impl KeyStore for MemoryKeys {
+    fn store(&self, scope: &str, bytes: &[u8]) -> Result<()> {
+        self.0.lock().unwrap().insert(scope.into(), bytes.to_vec());
+        Ok(())
+    }
+    fn load(&self, scope: &str) -> Result<Vec<u8>> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(scope)
+            .cloned()
+            .ok_or(PackError::KeyNotFound)
+    }
+    fn delete(&self, scope: &str) -> Result<()> {
+        self.0
+            .lock()
+            .unwrap()
+            .remove(scope)
+            .map(|_| ())
+            .ok_or(PackError::KeyNotFound)
+    }
+}
+
+fn metadata(key_id: Option<String>) -> PackMetadata {
     PackMetadata {
         publisher_id: "owned-fixture-publisher".into(),
         author: "Fixture Author".into(),
@@ -15,7 +63,7 @@ fn metadata() -> PackMetadata {
         version: "1.0.0".into(),
         license: "CC0-1.0".into(),
         redistribution: false,
-        key_id: Some("owned-fixture-key".into()),
+        key_id,
         dependencies: vec![Dependency {
             publisher_id: "other-publisher".into(),
             pack_id: "shared-dependency".into(),
@@ -31,22 +79,43 @@ fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
     let out = root.join("pack.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let mut trust = TrustedPublishers::default();
-    trust.insert("owned-fixture-publisher", signer.key_id(), signer.public_key());
+    trust.insert(
+        "owned-fixture-publisher",
+        signer.key_id(),
+        signer.public_key(),
+    );
     let key = [0x5a; 32];
     let bytes = b"synthetic map bytes".to_vec();
-    let source_hash = format!("{:x}", sha2::Sha256::digest(b"original source bytes"));
+    let source_hash = hash(b"original source bytes");
     let manifest = create_pack(
         &out,
-        metadata(),
-        &[AssetInput { path: "maps/Test/global.cfg".into(), source_hash, bytes: bytes.clone() }],
+        metadata(Some(hash(&key))),
+        &[AssetInput {
+            id: "map-global".into(),
+            path: "maps/Test/global.cfg".into(),
+            source_sha256: source_hash,
+            bytes: bytes.clone(),
+        }],
         &signer,
         Some(&key),
         &AtomicBool::new(false),
-    ).unwrap();
+    )
+    .unwrap();
     assert_eq!(manifest.dependencies[0].version, "2.1.0");
-    assert!(!std::fs::read(out.join("manifest.json")).unwrap().windows(bytes.len()).any(|w| w == bytes));
+    assert!(!std::fs::read(out.join("manifest.json"))
+        .unwrap()
+        .windows(bytes.len())
+        .any(|w| w == bytes));
 
-    let pack = VerifiedPack::open(&out, &trust, Some(key)).unwrap();
+    let keys = MemoryKeys::default();
+    let expires = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+    let entitlement = issue_entitlement(&manifest, key, expires, &signer).unwrap();
+    unlock(&out, &entitlement, &trust, &keys).unwrap();
+    let pack = VerifiedPack::open_unlocked(&out, &trust, &keys).unwrap();
     assert_eq!(pack.read("maps/Test/global.cfg").unwrap(), bytes);
     assert_eq!(pack.assets().len(), 1);
     std::fs::remove_dir_all(root).unwrap();
@@ -59,39 +128,119 @@ fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
     let out = root.join("pack.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let trust = TrustedPublishers::default();
-    let source_hash = format!("{:x}", sha2::Sha256::digest(b"original"));
+    let source_hash = hash(b"original");
     create_pack(
         &out,
-        metadata(),
-        &[AssetInput { path: "maps/Test/global.cfg".into(), source_hash, bytes: b"fixture".to_vec() }],
+        metadata(Some(hash(&[0x12; 32]))),
+        &[AssetInput {
+            id: "map-global".into(),
+            path: "maps/Test/global.cfg".into(),
+            source_sha256: source_hash,
+            bytes: b"fixture".to_vec(),
+        }],
         &signer,
         Some(&[0x12; 32]),
         &AtomicBool::new(false),
-    ).unwrap();
-    assert!(VerifiedPack::open(&out, &trust, Some([0x12; 32])).is_err());
+    )
+    .unwrap();
+    let keys = MemoryKeys::default();
+    assert!(VerifiedPack::open_unlocked(&out, &trust, &keys).is_err());
     let mut trusted = TrustedPublishers::default();
-    trusted.insert("owned-fixture-publisher", signer.key_id(), signer.public_key());
-    assert!(VerifiedPack::open(&out, &trusted, Some([0x34; 32])).unwrap().read("maps/Test/global.cfg").is_err());
-
-    let manifest = VerifiedPack::open(&out, &trusted, Some([0x12; 32])).unwrap().manifest().clone();
+    trusted.insert(
+        "owned-fixture-publisher",
+        signer.key_id(),
+        signer.public_key(),
+    );
+    let manifest = load_manifest(&out, &trusted).unwrap();
+    let expires = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 3600;
+    assert!(VerifiedPack::open_for_authoring(&out, &trusted, Some([0x34; 32])).is_err());
+    let correct = issue_entitlement(&manifest, [0x12; 32], expires, &signer).unwrap();
+    unlock(&out, &correct, &trusted, &keys).unwrap();
     let chunk = &manifest.assets[0].chunks[0].file;
     let mut bytes = std::fs::read(out.join(chunk)).unwrap();
     let last = bytes.len() - 1;
     bytes[last] ^= 1;
     std::fs::write(out.join(chunk), bytes).unwrap();
-    assert!(VerifiedPack::open(&out, &trusted, Some([0x12; 32])).unwrap().read("maps/Test/global.cfg").is_err());
+    assert!(VerifiedPack::open_unlocked(&out, &trusted, &keys).is_err());
 
     let bad = root.join("traversal.oopp");
+    let plain_metadata = metadata(None);
     assert!(create_pack(
         &bad,
-        metadata(),
-        &[AssetInput { path: "../escape.txt".into(), source_hash: "00".repeat(32), bytes: b"x".to_vec() }],
+        plain_metadata,
+        &[AssetInput {
+            id: "escape".into(),
+            path: "../escape.txt".into(),
+            source_sha256: "00".repeat(32),
+            bytes: b"x".to_vec()
+        }],
         &signer,
         None,
         &AtomicBool::new(false),
-    ).is_err());
+    )
+    .is_err());
     assert!(!bad.exists());
     std::fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn publisher_keys_round_trip_and_cached_manifest_does_not_need_asset_blobs() {
+    let root = scratch();
+    let _ = std::fs::remove_dir_all(&root);
+    let out = root.join("pack.oopp");
+    let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
+    let mut trust = TrustedPublishers::default();
+    trust.insert(
+        "owned-fixture-publisher",
+        signer.key_id(),
+        signer.public_key(),
+    );
+    let saved = trust.to_json().unwrap();
+    let trust = TrustedPublishers::load_json(&saved).unwrap();
+    let meta = metadata(None);
+    let original = b"before conversion";
+    let bytes = b"converted fixture bytes".to_vec();
+    let source_hash = hash(original);
+    let expected_output_hash = hash(&bytes);
+    let manifest = create_pack(
+        &out,
+        meta,
+        &[AssetInput {
+            id: "mesh-1".into(),
+            path: "Sceneryobjects/Pack/model/mesh.x".into(),
+            source_sha256: source_hash,
+            bytes,
+        }],
+        &signer,
+        None,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+    assert_eq!(manifest.assets[0].id, "mesh-1");
+    assert_eq!(manifest.assets[0].output_sha256, expected_output_hash);
+    assert!(manifest.assets[0].size < 1024);
+    std::fs::remove_dir_all(out.join("assets")).unwrap();
+    assert_eq!(load_manifest(&out, &trust).unwrap(), manifest);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 use sha2::Digest;
+
+#[cfg(any(target_os = "macos", windows))]
+#[test]
+fn native_protected_store_survives_a_new_store_handle_and_deletes_only_its_fixture() {
+    use omsi_pack::SystemKeyStore;
+    let keys = SystemKeyStore;
+    let scope = hash(format!("disposable-native-store-{}", std::process::id()).as_bytes());
+    let payload = b"synthetic signed entitlement envelope";
+    keys.store(&scope, payload).unwrap();
+    drop(keys);
+    let restarted = SystemKeyStore;
+    assert_eq!(restarted.load(&scope).unwrap(), payload);
+    restarted.delete(&scope).unwrap();
+    assert!(restarted.load(&scope).is_err());
+}

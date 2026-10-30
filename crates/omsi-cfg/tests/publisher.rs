@@ -1,9 +1,10 @@
-use std::sync::atomic::AtomicBool;
 use omsi_pack::{AssetInput, PackMetadata, SigningKey, TrustedPublishers};
+use std::sync::atomic::AtomicBool;
 
 #[test]
 fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_manifest_removal() {
-    let root = std::env::temp_dir().join(format!("omsi-publisher-integration-{}", std::process::id()));
+    let root =
+        std::env::temp_dir().join(format!("omsi-publisher-integration-{}", std::process::id()));
     std::fs::create_dir_all(root.join("Packs")).unwrap();
     let signer = SigningKey::generate(&ring::rand::SystemRandom::new()).unwrap();
     let mut trust = TrustedPublishers::default();
@@ -11,15 +12,30 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
     trust.save_file(&root.join("Publishers.json")).unwrap();
     let source = "12".repeat(32);
     let metadata = PackMetadata {
-        publisher_id: "fixture".into(), author: "Fixture".into(), pack_id: "scenery".into(),
-        version: "1.0.0".into(), license: "CC0-1.0".into(), redistribution: false,
-        key_id: None, dependencies: vec![],
+        publisher_id: "fixture".into(),
+        author: "Fixture".into(),
+        pack_id: "scenery".into(),
+        version: "1.0.0".into(),
+        license: "CC0-1.0".into(),
+        redistribution: false,
+        key_id: None,
+        dependencies: vec![],
     };
     let pack = root.join("Packs/scenery.oopp");
-    omsi_pack::create_pack(&pack, metadata, &[AssetInput {
-        id: "object".into(), path: "Sceneryobjects/Fixture/sign.sco".into(),
-        source_sha256: source.clone(), bytes: b"[friendlyname]\nOwned fixture\n".to_vec(),
-    }], &signer, None, &AtomicBool::new(false)).unwrap();
+    omsi_pack::create_pack(
+        &pack,
+        metadata,
+        &[AssetInput {
+            id: "object".into(),
+            path: "Sceneryobjects/Fixture/sign.sco".into(),
+            source_sha256: source.clone(),
+            bytes: b"[friendlyname]\nOwned fixture\n".to_vec(),
+        }],
+        &signer,
+        None,
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     let catalog = omsi_cfg::publisher::Catalog::load(&root).unwrap();
     let found = catalog.recognize(&source).unwrap();
     assert_eq!(found.dependency.version, "1.0.0");
@@ -29,20 +45,36 @@ fn signed_dependency_reads_through_the_real_vfs_and_cached_provenance_survives_m
     let cfg = omsi_cfg::CfgFile::read(&object).unwrap();
     assert_eq!(cfg.lines[1], "Owned fixture");
     std::fs::remove_file(pack.join("manifest.json")).unwrap();
-    assert!(omsi_cfg::publisher::Catalog::load(&root).unwrap().recognize(&source).is_some());
-    for mount in mounts { omsi_cfg::vfs::unmount_sealed(&mount); omsi_cfg::remove_content_root(&mount); }
+    assert!(
+        omsi_cfg::publisher::Catalog::load(&root)
+            .unwrap()
+            .recognize(&source)
+            .is_some()
+    );
+    for mount in mounts {
+        omsi_cfg::vfs::unmount_sealed(&mount);
+        omsi_cfg::remove_content_root(&mount);
+    }
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn ordinary_map_has_no_compulsory_manifest_and_missing_dependency_is_an_error() {
-    let root = std::env::temp_dir().join(format!("omsi-dependency-integration-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!(
+        "omsi-dependency-integration-{}",
+        std::process::id()
+    ));
     let map = root.join("maps/Fixture");
     std::fs::create_dir_all(&map).unwrap();
     omsi_cfg::publisher::validate_map(&map).unwrap();
     std::fs::write(map.join("dependencies.json"), r#"{"format_version":1,"dependencies":[{"publisher_id":"missing","pack_id":"missing","version":"1.0.0"}],"assets":[]}"#).unwrap();
     omsi_cfg::add_content_root(root.clone());
-    assert!(omsi_cfg::publisher::validate_map(&map).unwrap_err().to_string().contains("missing"));
+    assert!(
+        omsi_cfg::publisher::validate_map(&map)
+            .unwrap_err()
+            .to_string()
+            .contains("missing")
+    );
     omsi_cfg::remove_content_root(&root);
     std::fs::remove_dir_all(root).unwrap();
 }

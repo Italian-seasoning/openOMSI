@@ -36,6 +36,7 @@ pub mod transport;
 pub mod panic_guard;
 pub mod profile_keys;
 pub mod vfs;
+pub mod publisher;
 pub mod install_search;
 pub mod copied_install;
 mod walk;

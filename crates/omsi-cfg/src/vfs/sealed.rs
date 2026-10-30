@@ -99,7 +99,8 @@ pub struct SealedFile {
 
 pub(super) struct SealedMount {
     pub(super) path: PathBuf,
-    key: Arc<SealKey>,
+    key: Option<Arc<SealKey>>,
+    publisher: Option<Arc<omsi_pack::VerifiedPack>>,
     /// Files by lower-case relative path.
     entries: HashMap<String, SealedFile>,
     /// Folder contents by lower-case folder path ("" = the root): (name as given, is folder).
@@ -109,7 +110,11 @@ pub(super) struct SealedMount {
 impl SealedMount {
     pub(super) fn read(&self, key: &str) -> io::Result<Vec<u8>> {
         let f = self.entries.get(key).ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{}: no file {key}", self.path.display())))?;
-        let plain = unseal(&self.key, &f.aad, std::fs::read(&f.blob)?).map_err(|e| io::Error::new(e.kind(), format!("{}/{}: {e}", self.path.display(), f.rel)))?;
+        if let Some(pack) = &self.publisher {
+            return pack.read(&f.blob.to_string_lossy()).map_err(io::Error::other);
+        }
+        let key = self.key.as_ref().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "sealed store has no key"))?;
+        let plain = unseal(key, &f.aad, std::fs::read(&f.blob)?).map_err(|e| io::Error::new(e.kind(), format!("{}/{}: {e}", self.path.display(), f.rel)))?;
         if plain.len() as u64 != f.size {
             return Err(io::Error::new(io::ErrorKind::InvalidData, format!("{}/{}: {} bytes, {} expected", self.path.display(), f.rel, plain.len(), f.size)));
         }
@@ -138,7 +143,26 @@ static SEALED: RwLock<Vec<Arc<SealedMount>>> = RwLock::new(Vec::new());
 /// Mount `files` (sealed with `key`) as the folder `mount`, which need not exist on disk;
 /// a store mounted there before is replaced. Returns the mount point.
 pub fn mount_sealed(mount: &Path, key: Arc<SealKey>, files: Vec<SealedFile>) -> PathBuf {
-    let mut m = SealedMount { path: mount.to_path_buf(), key, entries: HashMap::new(), dirs: HashMap::new() };
+    mount_store(mount, Some(key), files, None)
+}
+
+/// Mount an authenticated publisher pack without writing decoded content to disk.
+pub fn mount_publisher(mount: &Path, pack: Arc<omsi_pack::VerifiedPack>, aliases: std::collections::BTreeMap<String, String>) -> io::Result<PathBuf> {
+    let aliases = if aliases.is_empty() { pack.assets().iter().map(|a| (a.path.clone(), a.path.clone())).collect() } else { aliases };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut files = Vec::new();
+    for (alias, original) in aliases {
+        if alias.is_empty() || alias.len() > 1024 || alias.contains(['\\', ':', '\0']) || alias.split('/').any(|p| p.is_empty() || p == "." || p == ".." || p.ends_with(['.', ' '])) || !seen.insert(alias.to_lowercase()) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "unsafe or duplicate publisher asset alias"));
+        }
+        let asset = pack.assets().iter().find(|a| a.path == original).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "publisher asset alias was not found"))?;
+        files.push(SealedFile { rel: alias, blob: PathBuf::from(original), aad: Vec::new(), size: asset.size });
+    }
+    Ok(mount_store(mount, None, files, Some(pack)))
+}
+
+fn mount_store(mount: &Path, key: Option<Arc<SealKey>>, files: Vec<SealedFile>, publisher: Option<Arc<omsi_pack::VerifiedPack>>) -> PathBuf {
+    let mut m = SealedMount { path: mount.to_path_buf(), key, publisher, entries: HashMap::new(), dirs: HashMap::new() };
     m.dirs.insert(String::new(), Vec::new());
     for f in files {
         let parts: Vec<&str> = f.rel.split(['/', '\\']).filter(|c| !c.is_empty() && *c != "." && *c != "..").collect();
@@ -175,7 +199,7 @@ pub fn unmount_sealed(mount: &Path) {
 /// Does `path` lie in a sealed mount (content that must never be written out in plain
 /// form, nor anything derived from it be cached on disk)?
 pub fn is_sealed(path: &Path) -> bool {
-    locate(path).is_some()
+    locate(path).is_some_and(|(m, _)| m.publisher.as_ref().is_none_or(|p| p.manifest().key_id.is_some()))
 }
 
 /// The sealed mount `path` lies in, and its lower-case path inside it.

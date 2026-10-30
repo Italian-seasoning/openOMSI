@@ -10,10 +10,11 @@ ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+zeroize = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3"
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_Memory"] }
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_Storage_FileSystem"] }
 
