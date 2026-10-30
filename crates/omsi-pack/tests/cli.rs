@@ -5,8 +5,8 @@ use std::{
 };
 
 use omsi_pack::{
-    create_pack, forget_unlock, AssetInput, Dependency, PackMetadata, SigningKey, SystemKeyStore,
-    TrustedPublishers,
+    create_pack, forget_unlock, random_content_key, AssetInput, Dependency, PackMetadata,
+    SigningKey, SystemKeyStore, TrustedPublishers,
 };
 use ring::rand::SystemRandom;
 use sha2::Digest;
@@ -73,7 +73,7 @@ fn command_line_issues_unlocks_and_reopens_a_signed_pack_in_a_new_process() {
     assert_eq!(std::fs::metadata(&private).unwrap().len() > 0, true);
 
     let signer = SigningKey::from_pkcs8(&std::fs::read(&private).unwrap()).unwrap();
-    let key = [0x42; 32];
+    let key = random_content_key().unwrap();
     let pack_key = root.join("publisher-pack-key.bin");
     private_file(&pack_key, &key);
     let pack = root.join("fixture.oopp");

@@ -8,8 +8,9 @@ use std::{
 };
 
 use omsi_pack::{
-    create_pack, forget_unlock, issue_entitlement, load_manifest, unlock, AssetInput, Dependency,
-    KeyStore, PackError, PackMetadata, Result, SigningKey, TrustedPublishers, VerifiedPack,
+    create_pack, forget_unlock, issue_entitlement, load_manifest, random_content_key, unlock,
+    AssetInput, Dependency, KeyStore, PackError, PackMetadata, Result, SigningKey,
+    TrustedPublishers, VerifiedPack,
 };
 use ring::rand::SystemRandom;
 
@@ -117,7 +118,7 @@ fn trusted_signed_encrypted_pack_round_trips_bounded_assets() {
         signer.key_id(),
         signer.public_key(),
     );
-    let key = [0x5a; 32];
+    let key = random_content_key().unwrap();
     let bytes = b"synthetic map bytes".to_vec();
     let source_hash = hash(b"original source bytes");
     let manifest = create_pack(
@@ -165,9 +166,10 @@ fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
     let trust = TrustedPublishers::default();
     let source_hash = hash(b"original");
+    let key = random_content_key().unwrap();
     create_pack(
         &out,
-        metadata(Some(hash(&[0x12; 32]))),
+        metadata(Some(hash(&key))),
         &[AssetInput {
             id: "map-global".into(),
             path: "maps/Test/global.cfg".into(),
@@ -175,7 +177,7 @@ fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
             bytes: b"fixture".to_vec(),
         }],
         &signer,
-        Some(&[0x12; 32]),
+        Some(&key),
         &AtomicBool::new(false),
     )
     .unwrap();
@@ -193,8 +195,11 @@ fn unknown_signer_wrong_key_tampering_and_traversal_fail_closed() {
         .unwrap()
         .as_secs()
         + 3600;
-    assert!(VerifiedPack::open_for_authoring(&out, &trusted, Some([0x34; 32])).is_err());
-    let correct = issue_entitlement(&manifest, [0x12; 32], expires, &signer).unwrap();
+    assert!(
+        VerifiedPack::open_for_authoring(&out, &trusted, Some(random_content_key().unwrap()))
+            .is_err()
+    );
+    let correct = issue_entitlement(&manifest, key, expires, &signer).unwrap();
     unlock(&out, &correct, &trusted, &keys).unwrap();
     let chunk = &manifest.assets[0].chunks[0].file;
     let mut bytes = std::fs::read(out.join(chunk)).unwrap();
@@ -294,7 +299,7 @@ fn chunked_and_empty_assets_round_trip_with_distinct_nonces() {
         signer.key_id(),
         signer.public_key(),
     );
-    let key = [0x45; 32];
+    let key = random_content_key().unwrap();
     let large = vec![0x6a; 65 * 1024];
     let manifest = create_pack(
         &out,
@@ -347,7 +352,7 @@ fn file_directory_prefix_collision_is_rejected_before_output() {
     std::fs::create_dir_all(&root).unwrap();
     let out = root.join("collision.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-    let key = [0x2a; 32];
+    let key = random_content_key().unwrap();
     let meta = metadata(Some(hash(&key)));
     assert!(create_pack(
         &out,
@@ -381,7 +386,7 @@ fn unicode_normalized_file_directory_prefix_collision_is_rejected_before_output(
     std::fs::create_dir_all(&root).unwrap();
     let out = root.join("unicode-collision.oopp");
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-    let key = [0x2b; 32];
+    let key = random_content_key().unwrap();
     assert!(create_pack(
         &out,
         metadata(Some(hash(&key))),
@@ -413,7 +418,7 @@ fn cancellation_truncation_reordering_and_storage_failure_fail_closed() {
     let root = scratch();
     std::fs::create_dir_all(&root).unwrap();
     let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-    let key = [0x37; 32];
+    let key = random_content_key().unwrap();
     let source = vec![0x8f; 65 * 1024];
     let cancelled_path = root.join("cancelled.oopp");
     let meta = metadata(Some(hash(&key)));

@@ -1767,7 +1767,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let pack = root.join("expired.oopp");
         let signer = SigningKey::generate(&SystemRandom::new()).unwrap();
-        let key = [0x31; 32];
+        let key = random_content_key().unwrap();
         let manifest = create_pack(
             &pack,
             PackMetadata {

@@ -298,7 +298,7 @@ fn trusted_installed(
 
 /// The map-scoped virtual roots installed during world open. Dropping the World removes
 /// these aliases so another map cannot inherit them.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct DependencyMounts {
     mounts: Vec<PathBuf>,
     alias_scope: Option<u64>,
@@ -316,6 +316,7 @@ impl Drop for DependencyMounts {
                     for root in scope.mounts.into_iter().rev() {
                         crate::vfs::unmount_sealed(&root);
                     }
+                    crate::content_changed();
                 }
             }
         } else {
@@ -478,6 +479,8 @@ fn register_aliases(
         mounts: std::mem::take(mounts),
         leases: 1,
     });
+    drop(scopes);
+    crate::content_changed();
     Ok((id, false))
 }
 
