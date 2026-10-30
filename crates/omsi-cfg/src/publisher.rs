@@ -668,7 +668,7 @@ pub fn validate_map(map_dir: &Path) -> io::Result<DependencyMounts> {
     }
     check_aliases(&aliases)?;
     let mut roots_added = BTreeMap::new();
-    let mut virtual_mounts = Vec::new();
+    let mut virtual_mounts: Vec<PathBuf> = Vec::new();
     for (index, (_, pack)) in packs.into_iter().enumerate() {
         let pack_aliases = refs
             .assets
